@@ -9,7 +9,7 @@ ImageSorter is designed to help users efficiently manage and retrieve their pers
 This is intended to be a single-user application, but extensions have the potential to change this.
 
 ## Table of contents
-* [Showcase Video](#Showcase Video)
+* [Showcase Video](#Showcase-Video)
 * [Screenshots](#screenshots)
 * [Features](#features)
 * [Documentation](#documentation)
