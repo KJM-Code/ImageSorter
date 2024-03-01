@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="{{url_for(blueprint_name+'.load_required_file',filename='jquery.min.js')}}"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Menu</title>
+</head>
+<body style="margin-left:10px">
+    <div><h2>Functions</h2></div>
+    <div id="buttonContainer">
+        {%for function in available_functions%}
+        <div value="{{function[1]}}" onclick="processFunction(this)">
+            {{function[0]}}
+        </div>
+        {%endfor%}
+    </div>
+    <div><h2>Links</h2></div>
+    <div style="padding-top:20px;margin-left:10px">
+        <a href="{{url_for(blueprint_name+'.Debug.show_process_methods')}}" style="color:white;margin-left:2px;">View all "Process Method" functions and active uses</a>
+    </div>
+</body>
+<script>
+    const csrf_token = '{{csrf_token()}}';
+
+    function processFunction(Element) {
+        document.getElementById('buttonContainer').style.pointerEvents = 'none';
+        document.getElementById('buttonContainer').style.opacity = '0.5';
+        $.ajax({
+            
+            type: "POST",
+            url: '{{url_for(blueprint_name+".Debug.debug_menu")}}',
+            data: {DEBUG_MODE:Element.getAttribute('value'),
+                },
+            beforeSend: function(request) {
+                        request.setRequestHeader("X-CSRFToken", csrf_token);
+                    },
+            success: function(data) {   
+                setTimeout(() => {
+                    document.getElementById('buttonContainer').style.pointerEvents = '';
+                    document.getElementById('buttonContainer').style.opacity = '1';
+                }, 1000);
+                    
+                }
+                })
+    }
+    {% include 'styles_jinja/theme_load.html'%}
+
+    
+</script>
+<style>
+    {% include 'styles_jinja/theme_css.html'%}
+
+    #buttonContainer > div,a {
+        margin:10px;
+        padding: 20px;
+        border-radius: 10px;
+        background:rgba(0,0,0,0.25);
+        width:fit-content;
+        cursor:pointer;
+    }
+</style>
+</html>
+

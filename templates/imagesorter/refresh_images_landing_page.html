@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="{{url_for(blueprint_name+'.load_required_file',filename='jquery.min.js')}}"></script>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{blueprint_name}} - File Loader</title>
+</head>
+<body>
+    <div id="mainContainer">
+        <div id="topbar">
+            <button onclick="createNewDirectory()">New Directory</button>
+            <div id="refresh-subcategory-container">
+                <div style="text-align: center;padding: 5px">Sub-Category:</div>
+                <select id="subcategory-selection">
+    
+                </select>
+                <button onclick="ajax_refresh_multiple_folders(current_main_category,document.querySelector('#subcategory-selection').value)">Load Sub-Categories</button>
+                <button style="top: 2px;padding: 3px;padding-right: 3px;padding-left: 3px;padding-left: 10px;padding-right: 10px;" onclick="helpMenu.show()">Help</button>
+            </div>
+        </div>
+        <div id="tableSelectContainer">
+            <div>Main-Categories</div>
+            <select id="tableSelect" size=2>
+
+            </select>
+        </div>
+        <div id="tableContainers">
+        </div>
+    </div>
+</body>
+</html>
+<script>
+    {% include 'styles_jinja/theme_load.html'%}
+    const csrf_token = "{{csrf_token()}}"
+    let folder_update_timeouts = {};
+    let ajax_info = {
+        currently_refreshing_folder:false
+    }
+
+    let current_main_category;
+    
+    
+
+
+    class RefreshDirectoryContainer{
+        constructor(container,selectElement) {
+            this.mainCategories = {};
+            this.tableContainer = container.appendChild(document.createElement('div'))
+            this.tableContainer.classList.add('refresh-directory-container')
+            this.selectElement = selectElement;
+
+            this.selectElement.onchange = () => {
+                this.tableContainer.querySelectorAll('.table-wrapper.show').forEach((visible) => {
+                    visible.classList.remove('show')
+                })
+                current_main_category = this.selectElement.value;
+                if (Object.keys(directory_folders).length == 0) {
+                    return;
+                }
+                update_available_sub_categories();
+                this.mainCategories[this.selectElement.value].tableWrapper.classList.add('show')
+                localStorage.setItem('refreshLastSelectedMainCategory',this.selectElement.value)
+                
+
+                
+                
+            }
+        }
+
+
+
+        add_main_category(mainCategory,mainCategoryTables) {
+            if (!Object.keys(this.mainCategories).includes(mainCategory)) {
+                this.mainCategories[mainCategory] = new MainCategory(this.tableContainer,mainCategory,mainCategoryTables);
+            } else {
+                Array.from(mainCategoryTables).forEach((tableRow) => {
+                    this.mainCategories[mainCategory].addNewRow(tableRow);
+                })
+
+            }
+        }
+        
+    }
+
+    class MainCategory {
+        constructor(parentElement,mainCategory,mainCategoryTables) {
+            this.tableWrapper = parentElement.appendChild(document.createElement('div'))
+            this.tableWrapper.classList.add('table-wrapper');
+            this.mainItemContainer = this.tableWrapper.appendChild(document.createElement('table'))
+            this.mainItemContainer.setAttribute('main_category',mainCategory);
+            this.mainItemContainer.style.width = '100%';
+            this.mainItemContainer.style.position = 'relative';
+
+            this.mainItemContainerTheader = this.mainItemContainer.appendChild(document.createElement('thead'))
+            this.mainItemContainerTbody = this.mainItemContainer.appendChild(document.createElement('tbody'))
+
+            this.headerTR = this.mainItemContainerTheader.appendChild(document.createElement('tr'));
+            this.headers = ['Load Files',
+                'Clear Folder',
+                'Folder Path',
+                'Main-Category',
+                'Sub-Category',
+                'Imdir',
+                'File Count',
+                'Last Updated',
+                'Remove Directory'];
+            this.headers.forEach((header) => {
+                let th = this.headerTR.appendChild(document.createElement('th'));
+                th.innerText = header;
+                th.dataset.column = header;
+            })
+
+            
+            Array.from(mainCategoryTables).forEach((tableRow) => {
+                this.addNewRow(tableRow);
+            })
+            setup_table_sort(this.mainItemContainer);
+        }
+
+        toggleViewEditMode(table_row,tds,editColumnSelected=null) {
+            if (table_row.getAttribute('current-mode') === 'view') {
+                table_row.setAttribute('current-mode','edit')
+                        Array.from(tds).forEach((editColumn) => {
+                            editColumn.title = `Original Value: "${editColumn.getAttribute('original_value')}"`;
+                            editColumn.querySelector('div').style.display = 'none';
+                            editColumn.querySelector('input').style.display = 'block';
+                            editColumn.querySelector('input').value = editColumn.getAttribute('original_value');
+                        })
+                        if (editColumnSelected != null) {
+                            editColumnSelected.querySelector('input').focus();
+                            editColumnSelected.querySelector('input').select();
+                        }
+                        
+                        
+                    } else {
+                        table_row.setAttribute('current-mode','view')
+                        //display divs
+                        Array.from(tds).forEach((editColumn) => {
+                            editColumn.title = '[[Double Click]] to edit. Then press [[Enter]] to confirm your changes.';
+                            editColumn.querySelector('div').style.display = 'block';
+                            editColumn.querySelector('input').style.display = 'none';
+                            editColumn.querySelector('input').value = '';
+                            editColumn.querySelector('input').classList.remove('changed-value')
+                        })
+                    }
+        }
+
+        addNewRow(tableRow) {
+            let newTR = this.createNewTag(this.mainItemContainerTbody,'tr')
+            newTR.setAttribute('current-mode','view');
+            newTR.setAttribute('imdir_auto_key',tableRow.imdir_auto_key);
+            newTR.setAttribute('original_path',tableRow.path);
+            let currCol = 0
+            const tds = Array.from({ length: 9 }, () => newTR.appendChild(document.createElement('td')));
+            // console.log(tds.length,tds)
+            let refreshButton = this.createNewTag(tds[currCol],'div');
+            refreshButton.onclick = () => {
+                ajax_refresh_folder(tableRow.path,tableRow.imdir_auto_key);
+                clearInterval(folder_update_timeouts[tableRow.path]);
+                // folder_update_timeouts[tableRow.path] = setInterval(() => {
+                //     ajax_get_refresh_status(tableRow.path,tableRow.imdir_auto_key);
+                // }, 1000);
+            }
+            
+            refreshButton.innerText = 'Load Files';
+            refreshButton.classList.add('clickable');
+            refreshButton.title = 'Loads images into the database.';
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = 'Load Files';
+            
+            currCol+=1;
+            
+
+            let clearButton = this.createNewTag(tds[currCol],'div');
+            clearButton.onclick = () => {
+                ajax_clear_folder(tableRow.path,tableRow.imdir_auto_key)
+            }
+            clearButton.innerText = 'Clear Folder';
+            clearButton.classList.add('clickable');
+            clearButton.title = 'Removes only the images from the database, keeps all tag information/sequences/notes.\n\nIf the files retain the same filename and extension, they will still be linked to their tags/sequences/notes next time they are loaded into the system.'
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = 'Clear Folder';
+            
+            currCol+=1;
+            
+
+
+            let folderPath = this.createNewTag(tds[currCol],'div');
+            let folderPathInput = this.createNewTag(tds[currCol],'input');
+            folderPathInput.style.display = 'none';
+            tds[currCol].classList.add('editable');
+            tds[currCol].title = '[[Double Click]] to edit. Then press [[Enter]] to confirm your changes.'
+            tds[currCol].setAttribute('edit-type','PATH')
+            tds[currCol].setAttribute('original_value',tableRow.path)
+            tds[currCol].style.paddingLeft = '5px';
+            folderPath.innerText = tableRow.path;
+
+            
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = tableRow.path;
+            
+            currCol+=1;
+            
+
+            let mainCategory = this.createNewTag(tds[currCol],'div');
+            let mainCategoryInput = this.createNewTag(tds[currCol],'input');
+            mainCategoryInput.style.display = 'none';
+            tds[currCol].classList.add('editable');
+            tds[currCol].title = '[[Double Click]] to edit. Then press [[Enter]] to confirm your changes.'
+            tds[currCol].setAttribute('edit-type','MAIN_CATEGORY')
+            tds[currCol].setAttribute('original_value',tableRow.main_category)
+            mainCategory.innerText = tableRow.main_category;
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = tableRow.main_category;
+            
+            currCol+=1;
+
+            let subCategory = this.createNewTag(tds[currCol],'div');
+            let subCategoryInput = this.createNewTag(tds[currCol],'input');
+            subCategoryInput.style.display = 'none';
+            tds[currCol].classList.add('editable');
+            tds[currCol].title = '[[Double Click]] to edit. Then press [[Enter]] to confirm your changes.'
+            tds[currCol].setAttribute('edit-type','SUB_CATEGORY')
+            tds[currCol].setAttribute('original_value',tableRow.sub_category)
+            subCategory.innerText = tableRow.sub_category;
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = tableRow.sub_category;
+            
+            currCol+=1;
+            
+
+            let imdirAK = this.createNewTag(tds[currCol],'div');
+            imdirAK.innerText = `${tableRow.imdir_auto_key}`;
+            imdirAK.classList.add('imdir-auto-key')
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = tableRow.imdir_auto_key;
+            
+            currCol+=1;
+            
+
+            let fileCount = this.createNewTag(tds[currCol],'div');
+            fileCount.innerText = `${tableRow.FILE_COUNT.toLocaleString()}`;
+            fileCount.filecount = tableRow.FILE_COUNT;
+            fileCount.classList.add('file-count')
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = tableRow.FILE_COUNT;
+            
+            currCol+=1;
+
+            let lastUpdated = this.createNewTag(tds[currCol],'div');
+            lastUpdated.classList.add('last-updated')
+
+            const date = new Date(tableRow.last_updated);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const formattedDate = `${year}-${month}-${day}`;
+            lastUpdated.innerText = formattedDate;
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = parseInt(`${year}${month}${day}`);
+            
+            currCol+=1;
+
+            let removeDirectory = this.createNewTag(tds[currCol],'div');
+            removeDirectory.innerText = 'Remove';
+            removeDirectory.classList.add('clickable');
+            removeDirectory.onclick = () => {
+                ajax_remove_directory(tableRow.path,tableRow.main_category,tableRow.sub_category,tableRow.imdir_auto_key);
+            }
+            tds[currCol].dataset.column = this.headers[currCol];
+            tds[currCol].dataset.value = 'Remove';
+
+            let tdSet = [tds[2],tds[3],tds[4]]
+            newTR.tdSet = tdSet;
+            newTR.toggleViewEditMode = () => {this.toggleViewEditMode(newTR,tdSet)};
+            Array.from(tdSet).forEach((editableColumn) => {
+                Array.from(editableColumn.querySelectorAll('input')).forEach((editInput) => {
+                    editInput.onkeyup = function() {
+                        event.preventDefault();
+                        if (event.key === 'Escape') {
+                            this.value = editableColumn.getAttribute('original_value');
+                            this.classList.remove('changed-value')
+                        } else if (event.key === 'Enter') {
+                            let changedValues = {};
+                            let allowUpdate = false;
+                            //submit if there's at least one change
+                            Array.from(newTR.querySelectorAll('.changed-value')).forEach((changed_values) => {    
+                                let changedTD = changed_values.parentElement;
+                                let editType = changedTD.getAttribute('edit-type');
+                                changedValues[`NEW_${editType.toUpperCase()}`] = changed_values.value;  
+                                allowUpdate = true;
+                            })
+
+                            if (allowUpdate) {
+                                //ajax update
+                                changedValues.ORIGINAL_PATH = tableRow.path;
+                                changedValues.IMDIR_AUTO_KEY = tableRow.imdir_auto_key;
+                                ajax_folder_update(changedValues)
+                                
+                            }
+                            
+                        } else {
+                            if (this.value.toUpperCase() != editableColumn.getAttribute('original_value').toUpperCase() ) {
+                                if (!this.classList.contains('changed-value')) {
+                                    this.classList.add('changed-value')
+                                }
+                            } else {
+                                this.classList.remove('changed-value')
+                            }
+                        }
+                    }
+                })
+                
+                editableColumn.ondblclick = () => {
+                    this.toggleViewEditMode(newTR,tdSet,editableColumn);
+                    //set to EDIT mode (or view mode, depending on toggle)
+                }
+            })
+            
+        }
+
+        createNewTag(parentElement,tagName) {
+            // console.log(parentElement,tagName)
+                return parentElement.appendChild(document.createElement(tagName))
+            }
+
+        
+
+    }
+
+
+
+    function ajax_refresh_folder(folder_path,imdir_auto_key,custom_info) {
+        ajax_info.currently_refreshing_folder = true;
+        updateStatusModal.show(folder_path,custom_info);
+
+        // updateStatusModal.setValues(folder_path);
+        // updateStatusModal.setUpdate(data);
+        $.ajax({
+                type: "POST",
+                url: "{{url_for(blueprint_name+'.load_files_landing_page')}}",
+                data:{PATH:folder_path,IMDIR_AUTO_KEY:imdir_auto_key},
+                beforeSend: function(request) {
+                        request.setRequestHeader("X-CSRFToken", csrf_token);
+                    },
+                success: function(data) {
+                    let trImdir = refreshDirectoryContainer.tableContainer.querySelector(`tr[imdir_auto_key="${imdir_auto_key}"]`);
+                    if (trImdir != undefined) {
+                        
+                        let fileCountElement = trImdir.querySelector('.file-count')
+
+                        let newFileCount = parseInt(fileCountElement.filecount)+parseInt(data.custom_data.files_uploaded);
+                        fileCountElement.innerHTML = `${(newFileCount).toLocaleString()}<br>+${data.custom_data.files_uploaded}`;
+                        fileCountElement.filecount = newFileCount;
+                        fileCountElement.title = `New Files Added: ${data.custom_data.files_uploaded}`;
+                        if (parseInt(data.custom_data.files_uploaded) > 0) {
+                            fileCountElement.style.background = 'green';
+                            fileCountElement.style.padding = '2px';
+                            fileCountElement.style.borderRadius = '10px';
+                        }
+                        
+
+                        trImdir.querySelector('.last-updated').innerText = data.custom_data.last_updated;
+                        trImdir.querySelector('.last-updated').style.background = 'green';
+                        trImdir.querySelector('.last-updated').style.padding = '2px';
+                        trImdir.querySelector('.last-updated').style.borderRadius = '10px';
+
+                        //move to the top
+                        trImdir.parentElement.insertBefore(trImdir,trImdir.parentElement.rows[0]);
+                        updateStatusModal.hide();
+
+                    }
+                    ajax_info.currently_refreshing_folder = false;
+                },
+                error:function(err){
+                    setTimeout(() => {
+                            clearInterval(folder_update_timeouts[folder_path]);
+                        }, 1000);
+                    alert(err.responseText);
+                    updateStatusModal.hide();
+                    ajax_info.currently_refreshing_folder = false;
+                    
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                    updateStatusModal.hide();
+                    ajax_info.currently_refreshing_folder = false;
+                }
+            })
+                // folder_update_timeouts[folder_path][0] = setInterval(() => {
+                //     ajax_get_refresh_status(folder_path,imdir_auto_key);
+                // }, 1000);
+        }
+
+    function ajax_refresh_multiple_folders(main_category,sub_category) {
+        function _process_folders(folders_to_update) {
+            if (ajax_info.currently_refreshing_folder === false) {
+                ajax_refresh_folder(folders_to_update[0].path,folders_to_update[0].imdir_auto_key,`Rem: ${folders_to_update.length}`);
+                folders_to_update.shift();
+            }
+            if (folders_to_update.length > 0) {
+                setTimeout(() => {
+                    _process_folders(folders_to_update);
+                }, 500);
+            }
+        }
+        let folders_to_update = [];
+        Array.from(directory_folders[main_category.toUpperCase()]).forEach((folder) => {
+            if (sub_category == null || sub_category == 'null' || folder.sub_category == sub_category.toUpperCase()) {
+                folders_to_update.push(folder)
+            }
+        })
+        console.log("Updating...",folders_to_update.length);
+
+        document.querySelector('.table-wrapper.show').scrollTop = 0;
+        _process_folders(folders_to_update);
+        
+    }
+    
+    
+    function update_available_sub_categories() {
+        let arrayOfSubCategories = Array.from(new Set(directory_folders[current_main_category].map(obj => obj.sub_category)));
+        arrayOfSubCategories.sort();
+
+        let subcategory_selection = document.querySelector('#subcategory-selection');
+
+        subcategory_selection.innerHTML = '';
+
+        let option = subcategory_selection.appendChild(document.createElement('option'));
+        option.innerText = 'All Sub-Categories'
+        option.style.textDecoration = 'underlined';
+        option.value = null;
+
+        Array.from(arrayOfSubCategories).forEach((subcategory) => {
+            let option = subcategory_selection.appendChild(document.createElement('option'));
+            option.innerText = subcategory.toUpperCase();
+            option.value = subcategory.toUpperCase();
+        })
+
+        return arrayOfSubCategories
+    }
+
+    function ajax_folder_update(dataDict) {
+
+        if (Object.keys(dataDict).length > 1) {
+            
+            $.ajax({
+            type: "PATCH",
+            url: "{{url_for(blueprint_name+'.modify_folders')}}",
+            data:dataDict,
+            beforeSend: function(request) {
+                        request.setRequestHeader("X-CSRFToken", csrf_token);
+                    },
+            success: function(data) {
+                if (data[0]) {
+                    let trImdir = refreshDirectoryContainer.tableContainer.querySelector(`tr[imdir_auto_key="${dataDict.IMDIR_AUTO_KEY}"]`);
+                    Array.from(trImdir.tdSet).forEach((td) => {
+                        let input = td.querySelector('input');
+                        let div = td.querySelector('div');
+                        if (input.classList.contains('changed-value')) {
+                            td.setAttribute('original_value',input.value.toUpperCase());
+                            div.innerText = input.value.toUpperCase();
+                            input.classList.remove('changed-value');
+                        }
+                    })
+                    trImdir.toggleViewEditMode();
+                } else {
+                    alert(`Folder - ${dataDict.ORIGINAL_PATH}\n\n${data[1]}`)
+                }
+                
+            },
+            error:function(err){
+
+            },
+            fail: function() {
+                alert('Database Access Denied');
+            }
+            })
+
+        }
+    }
+
+
+
+
+    class Modal {
+    constructor(contentID) {
+
+        this.hidden = true;
+        
+        // Create the background div
+        this.background = document.createElement('div');
+        this.background.style.position = 'fixed';
+        this.background.style.top = '0';
+        this.background.style.left = '0';
+        this.background.style.width = '100%';
+        this.background.style.height = '100%';
+        this.background.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        this.background.style.zIndex = '9999';
+        this.background.style.display = 'none';
+        
+
+        // Create the content div
+        this.content = document.createElement('div');
+        this.content.style.position = 'fixed';
+        this.content.style.top = '50%';
+        this.content.style.left = '50%';
+        this.content.style.transform = 'translate(-50%, -50%)';
+        // this.content.style.backgroundColor = 'white';
+        this.content.style.zIndex = '10000';
+        this.content.style.borderRadius = '20px';
+        this.content.style.overflow = 'hidden';
+        this.content.id = contentID;
+        
+
+        // Add the content div to the background div
+        this.background.appendChild(this.content);
+
+        // Add the background div to the body element
+        document.body.appendChild(this.background);
+    }
+
+    // Method to set the size of the content div
+    setSize(width, height) {
+        this.content.style.width = `${width}px`;
+        this.content.style.height = `${height}px`;
+    }
+
+    setHTML(innerHTML) {
+        this.content.innerHTML = innerHTML;
+    }
+
+    updateItem() {
+        console.log("Modify this method to update the needed information");
+    }
+
+    // Method to show the modal
+    show() {
+        this.hidden = false;
+        this.background.style.display = 'block';
+    }
+
+    // Method to hide the modal
+    hide() {
+        this.hidden = true;
+        this.background.style.display = 'none';
+    }
+}
+
+
+class UpdateStatusModal {
+    constructor() {
+        this.modal = new Modal('updateStatusModal');
+        this.loadingInterval  = undefined;
+        this.updateContainer = this.modal.content.appendChild(document.createElement('div'));
+        this.updateContainer.classList.add('update-container');
+        this.updateContainer.style.margin = '5px';
+        this.updateContainer.style.width = '50vw';
+        this.updateContainer.style.background = 'black';
+        this.updateContainer.style.height = '100px';
+        this.updateContainer.style.border = '1px solid rgba(255,255,255,0.25)';
+        this.updateContainer.style.borderRadius = '20px';
+        this.updateContainer.style.padding = '20px';
+        this.hideTimeout;
+
+        this.updateContainer.margin = '20px';
+
+        this.rootFolder = this.updateContainer.appendChild(document.createElement('div'));
+        this.rootFolder.classList.add('root-folder');
+        this.currentFolder = this.updateContainer.appendChild(document.createElement('div'));
+        this.currentFolder.classList.add('current-folder');6
+
+        
+        this.updateBarContainer = this.updateContainer.appendChild(document.createElement('div'));
+        this.updateBarContainer.classList.add('update-bar-container')
+        this.updateBarContainer.style.position = 'relative';
+        this.updateBarContainer.style.overflow = 'hidden';
+        this.updateBarContainer.style.border = '1px solid green';
+        this.updateBarContainer.style.borderRadius = '20px';
+        this.updateBar = this.updateBarContainer.appendChild(document.createElement('div'));
+        this.updateBar.classList.add('update-bar')
+        this.updateBar.style.height = '20px'
+        this.updateBar.style.background = 'green';
+        this.updateBar.style.borderRadius = '5px';
+        this.updateBarPercentage = this.updateBarContainer.appendChild(document.createElement('div'));
+        this.updateBarPercentage.classList.add('update-bar-percentage');
+        this.updateBarPercentage.style.width = '100%';
+        this.updateBarPercentage.style.position='absolute';
+        this.updateBarPercentage.style.textAlign = 'center';
+        this.updateBarPercentage.style.top = '0px';
+        this.updateInformation = this.updateContainer.appendChild(document.createElement('div'));
+        this.updateInformation.classList.add('update-information');
+
+        this.completedFiles = this.updateInformation.appendChild(document.createElement('div'));
+        this.completedFiles.classList.add('completed-files')
+        this.uploadedFiles = this.updateInformation.appendChild(document.createElement('div'));
+        this.uploadedFiles.classList.add('uploaded-files')
+        this.timeStarted = this.updateInformation.appendChild(document.createElement('div'));
+        this.timeStarted.classList.add('time-started')
+        this.timeRemaining = this.updateInformation.appendChild(document.createElement('div'));
+        this.timeRemaining.classList.add('time-remaining')
+
+        this.cancelContainer = this.updateContainer.appendChild(document.createElement('div'));
+        this.cancelButton = this.cancelContainer.appendChild(document.createElement('Button'));
+        this.cancelButton.classList.add('cancel-button');
+        this.cancelButton.innerText = 'Cancel Request';
+        this.cancelButton.onclick = () => {
+            this.cancelOperation();
+        }
+
+        this.custom_info = '';
+
+
+
+        // this.modal.show();
+    }
+
+    clearAll() {
+        this.updateBar.style.width = `0%`;
+        
+        this.completedFiles.innerText = `Progress: - / -`
+        this.uploadedFiles.innerText = `Files Uploaded: -`
+
+        this.updateBarPercentage.innerText = ``
+
+        this.timeStarted.innerText = `Started at: -`;
+        this.timeRemaining.innerText = `Time Remaining: -`
+
+        
+        this.currentFolder.innerText = `Current Folder: -`
+    }
+
+    show(folder_path,custom_info=undefined) {
+        if (custom_info !== undefined) {
+            this.rootFolder.innerText = `${custom_info} || ${folder_path}`;
+            this.custom_info = custom_info
+        } else {
+            this.rootFolder.innerText = `${folder_path}`;
+            this.custom_info = '';
+        }
+        clearTimeout(this.hideTimeout);
+        this.modal.show();
+        this.loadingInterval = setInterval(() => {
+            this.ajax_get_folder_status();
+        }, 1000);
+    }
+
+    ajax_get_folder_status() {
+        let thisReference = this;
+        $.ajax({
+                type: "GET",
+                url: "{{url_for(blueprint_name+'.get_loading_status_base')}}file_loading/",
+                success: function(data) {
+                    thisReference.setUpdate(data);
+                },
+                error:function(err){
+                    alert(err.responseText);
+                    thisReference.hide();
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                    thisReference.hide();
+                }
+            })
+    }
+
+    stop_checking_folder() {
+        clearInterval(this.loadingInterval);
+        
+    }
+
+    cancelOperation() {
+            let thisReference = this;
+            this.loadingAjax = $.ajax({
+                type:'POST',
+                url:"{{url_for(blueprint_name+'.cancel_loading_operation_base')}}"+`file_loading/`,
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success:function(data){
+                    if (data == true) {
+                        thisReference.hide();
+                    }
+                }
+            })
+        }
+
+
+    hide() {
+        this.stop_checking_folder();
+        this.hideTimeout = setTimeout(() => {
+            this.modal.hide();
+            this.clearAll();
+            document.title = 'ImageSorter - File Loader';
+            this.custom_info = '';
+        }, 1000);
+        
+    }
+    
+
+    setUpdate(updateValues) {
+        // console.log(updateValues);
+        this.updateBar.style.width = `${updateValues.progress_data.percentage_complete*100}%`;
+        
+        this.completedFiles.innerText = `Progress: ${updateValues.progress_data.n.toLocaleString()} / ${updateValues.custom_data.total_files.toLocaleString()}`
+        this.uploadedFiles.innerText = `Files Uploaded: ${updateValues.custom_data.files_uploaded}`
+
+        this.updateBarPercentage.innerText = `${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`
+
+        this.timeStarted.innerText = `Started at: ${updateValues.custom_data.time_started}`;
+        this.timeRemaining.innerText = `Time Remaining: ${updateValues.progress_data.remaining_time}`
+
+        
+        this.currentFolder.innerText = `Current Folder: ${updateValues.custom_data.current_folder}`
+
+        if (this.custom_info.length > 0) {
+            document.title = `IS - File Loader - ${this.custom_info}- ${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`;
+        } else {
+            document.title = `IS - File Loader - ${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`;
+        }
+
+        if (updateValues.custom_data.processing == false) {
+            this.hide();
+        }
+
+    }
+}
+
+
+
+function ajax_clear_folder(folder,imdir_auto_key) {
+        if (confirm(`Do you wish to clear this folder: ${folder}?`)){
+            $.ajax({
+                    type: "DELETE",
+                    url: "{{url_for(blueprint_name+'.load_files_landing_page')}}",
+                    data:{PATH:folder,IMDIR_AUTO_KEY:imdir_auto_key,CLEAR_FOLDER:true},
+                    beforeSend: function(request) {
+                        request.setRequestHeader("X-CSRFToken", csrf_token);
+                    },
+                    success: function(data) {
+                        alert("Folder has been cleared");
+                        let trImdir = refreshDirectoryContainer.tableContainer.querySelector(`tr[imdir_auto_key="${imdir_auto_key}"]`);
+                        if (trImdir !== undefined) {
+                            trImdir.querySelector('.file-count').innerText = 0;
+                        }
+                        
+                    },
+                    error:function(err){
+                        alert(err.responseText);
+                        
+                    },
+                    fail: function() {
+                        alert('Database Access Denied');
+                    }
+                })
+
+        }
+        
+        
+    }
+
+
+
+    function ajax_remove_directory(folder,main_category,sub_category,imdir_auto_key) {
+        if (confirm(`Are you sure you wish to remove the folder {${folder}} from the system?\nPlease ensure you have used the 'Clear Folder' function before removing the directory from the database.`)) {
+            $.ajax({
+                type: "DELETE",
+                url: "{{url_for(blueprint_name+'.modify_folders')}}",
+                data:{PATH:folder,
+                    MAIN_CATEGORY:main_category,
+                    SUB_CATEGORY:sub_category,
+                    IMDIR_AUTO_KEY:imdir_auto_key,
+                },
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success: function(data) {
+                    if (data) {
+                        let trImdir = refreshDirectoryContainer.tableContainer.querySelector(`tr[imdir_auto_key="${imdir_auto_key}"]`).remove();
+                    } else {
+                        alert(data[1])
+                    }
+                    
+                },
+                error:function(err){
+
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+                })
+        }
+    }
+
+
+
+    function createNewDirectory() {
+        //TODO do ajax POST query to create the directory
+
+        let directoryPath = prompt("Please enter the full path directory:")
+        if (directoryPath) {
+            let main_categoryName = prompt("Please enter the main-category name:","MAIN")
+            let sub_categoryName = prompt("Please enter the sub-category name:","MAIN")
+
+            if (main_categoryName && sub_categoryName) {
+                //todo AJAX, check if the path exists
+                $.ajax({
+                type: "POST",
+                url: "{{url_for(blueprint_name+'.modify_folders')}}",
+                data:{PATH:directoryPath,
+                    MAIN_CATEGORY:main_categoryName,
+                    SUB_CATEGORY:sub_categoryName},
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success: function(data) {
+                    if (data[0]) {
+                        tableRow = {
+                                FILE_COUNT:0,
+                                imdir_auto_key:data[2][0],
+                                last_updated:data[2][1],
+                                main_category:main_categoryName.toUpperCase(),
+                                sub_category:sub_categoryName.toUpperCase(),
+                                path:directoryPath
+                            }
+                        refreshDirectoryContainer.add_main_category(main_categoryName.toUpperCase(),[tableRow]);
+                        let trImdir = refreshDirectoryContainer.tableContainer.querySelector(`tr[imdir_auto_key="${data[2][0]}"]`);
+                        if (trImdir != null) {
+                            trImdir.parentElement.insertBefore(trImdir,trImdir.parentElement.rows[0]);
+                        }
+                        // if (Object.keys(refreshDirectoryContainer.mainCategories).includes(main_categoryName.toUpperCase)) {
+                        //     refreshDirectoryContainer.mainCategories[main_categoryName.upper()].addNewRow(tableRow);
+                        // } else {
+                        //     let newOption = document.getElementById('tableSelect').appendChild(document.createElement('option'))
+                        //     newOption.innerText = main_categoryName.toUpperCase();
+                        //     newOption.value = main_categoryName.toUpperCase();
+                        //     refreshDirectoryContainer.add_main_category(main_categoryName.toUpperCase(),[tableRow]);
+                        // }
+
+                    } else {
+                        alert(data[1])
+                    }
+                    
+                },
+                error:function(err){
+
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+                })
+            }
+        }
+    }
+
+    function setup_table_sort(table) {
+        function sortTable(table, column, isAscending) {
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+            const theaders = Array.from(thead.querySelectorAll('th'));
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            // Sort the rows based on the selected column
+            theaders.forEach((th) => {
+                th.dataset.order = null;
+            })
+            rows.sort((a, b) => {
+                let aValue = a.querySelector(`[data-column="${column}"]`).dataset.value;
+                let bValue = b.querySelector(`[data-column="${column}"]`).dataset.value;
+
+
+                if (!isNaN(parseFloat(aValue))) {
+                    aValue = parseFloat(aValue);
+                }
+                if (!isNaN(parseFloat(bValue))) {
+                    bValue = parseFloat(bValue);
+                }
+
+                if (isAscending) {
+                    if (aValue < bValue) {
+                        return -1
+                    } else {
+                        return 1;
+                    };
+                } else {
+                    if (aValue > bValue) {
+                        return -1
+                    }
+                    else { 
+                        return 1;
+                    }
+                }
+
+            });
+
+            // Remove existing rows from the table
+            rows.forEach(row => tbody.removeChild(row));
+
+            // Append the sorted rows to the table
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        const thArray = Array.from(table.querySelectorAll('th'));
+
+        thArray.forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.dataset.column;
+                const isAscending = th.dataset.order === 'asc';
+
+                // Your sorting logic goes here
+                sortTable(table, column, !isAscending);
+
+                // Toggle the sorting order
+                th.dataset.order = isAscending ? 'desc' : 'asc';
+            });
+        });
+    }
+
+    class HelpMenu extends Modal {
+        constructor() {
+            super('Help-Menu')
+            // this.show();
+
+            this.container = this.content.appendChild(document.createElement('div'));
+            this.container.classList.add('help-menu-container')
+            this.container.innerHTML = `
+            <div style="padding:10px;">
+                <h2>Refresh Files - Help Menu</h2>
+                <div>
+                    Here you can add new system folders, load new files, and update category information.
+                </div>
+                <div style="display:flex;gap:5px;margin-top:5px;">
+                    <div><span style="font-size: 18pt;border-radius: 20px;background: rgba(255,0,0,0.3);font-weight: 800;padding-left: 10px;padding-right: 10px;margin: 2px;">!</span></div>
+                    <div>Please be aware, Files uploaded to the system are based on their FILENAME. Any external editing of the filename will lose the link to the file.</div>
+                </div>
+                
+                <h2>How to use</h2>
+                <div class="indented-line">
+                    <h3 class="collapsible-header" detail="add-new-folder">Adding New Folders</h3>
+                    <div class="collapsible-container collapsed" detail="add-new-folder">
+                        <ul>
+                            <li>Click on "New Directory" in the top left.</li>
+                            <li>Enter the full path of the new directory (IE: "C:/Test_Folder/Content_To_Add") then press OK</li>
+                            <li>Next enter the Main-Category you wish this to be under, for your own organizational purposes and then press OK. (Default - MAIN)</li>
+                            <li>Finally, enter the Sub-Category you wish to have for this folder then press OK. (Default - MAIN)</li>
+                            <li>Once you have files in the folder and you're ready to upload it to the ImageSorter, see 'Loading Content' for how to upload it.
+                        </ul>
+                    </div>
+                    <h3 class="collapsible-header" detail="loading-content">Loading Content</h3>
+                    <div class="collapsible-container collapsed" detail="loading-content">
+                        <ul>
+                            <li>Click on the Main-Category on the far left side and then find the folder you wish to load.</li>
+                            <li>Click on the "Load Files" button and wait for it to finish.</li>
+                            <li>The 'File Count' and 'Last Updated' should then update on the side, showing you how many files were uploaded and when you updated.</li>
+                        </ul>
+                    </div>
+                    <h3 class="collapsible-header" detail="updating-information">Updating Information</h3>
+                    <div class="collapsible-container collapsed" detail="updating-information">
+                        <ul>
+                            <li>Double click on the following to edit it: [Folder Path, Main-Category, Sub-Category], this will convert the fields to an editable input.</li>
+                            <li>Update the values within the inputs, and press ENTER when you're ready to make the changes.</li>
+                            <li class="indented-line">To change the folder path, there needs to be no files loaded.</li>
+                        </ul>
+                    </div>
+                    <h3 class="collapsible-header" detail="clearing-a-folder">Clearing A Folder</h3>
+                    <div class="indented-line collapsible-container collapsed" detail="clearing-a-folder">
+                        Press the "Clear Folder" button on the folder you wish to remove the files from. This will not remove any Tags, Sequences, Notes, etc. This will only remove it from being searched and will need to be re-uploaded again through the 'Load Files' button.
+                    </div>
+                    <h3 class="collapsible-header" detail="organizing-information">Organizing Information</h3>
+                    <div class="collapsible-container collapsed indented-line" detail="organizing-information">You can sort the available folder data by clicking on the header.</div>
+                </div>
+                
+                
+            </div>
+            `
+            Array.from(this.container.querySelectorAll('.collapsible-header')).forEach((header) => {
+                header.onclick = () => {
+                    header.classList.toggle('selected')
+                    header.parentNode.querySelector(`.collapsible-container[detail="${header.getAttribute('detail')}"]`).classList.toggle('collapsed');
+                }  
+            })
+            this.background.onclick = () => {
+                if (!this.content.contains(event.target)) {
+                    this.hide();
+                }
+            }
+        }
+    }
+
+    
+
+
+    
+
+
+var directory_folders = {{folders|tojson}}
+
+refreshDirectoryContainer = new RefreshDirectoryContainer(document.getElementById('tableContainers'),document.getElementById('tableSelect'));
+Array.from(Object.keys(directory_folders)).forEach((mainCategory,indx) => {        
+    let newOption = document.getElementById('tableSelect').appendChild(document.createElement('option'))
+    newOption.innerText = mainCategory
+    newOption.value = mainCategory;
+    refreshDirectoryContainer.add_main_category(mainCategory,directory_folders[mainCategory]);
+})
+
+let lastSelectedMainCategory = localStorage.getItem('refreshLastSelectedMainCategory');
+if (lastSelectedMainCategory == null) {
+    if (Object.keys(directory_folders).length > 0) {
+        lastSelectedMainCategory = Object.keys(directory_folders)[0];
+    } else {
+        lastSelectedMainCategory = '';
+    }
+}
+
+
+
+
+
+
+
+document.getElementById('tableSelect').value = lastSelectedMainCategory;
+document.getElementById('tableSelect').onchange();
+
+
+
+let helpMenu = new HelpMenu();
+let updateStatusModal = new UpdateStatusModal();
+
+
+
+// clearInterval(folder_update_timeouts[`D:\\Images\\Danbooru\\images`]);
+// folder_update_timeouts[`D:\\Images\\Danbooru\\images`] = setInterval(() => {
+//     ajax_get_refresh_status(`D:\\Images\\Danbooru\\images`,20);
+// }, 1000);
+
+
+</script>
+
+
+<style>
+    {% include 'styles_jinja/theme_css.html'%}
+
+    /* table {
+        table-layout:fixed;
+    } */
+
+    table td:nth-child(1),table td:nth-child(2) {
+        width:8%;
+    }
+
+    table td:nth-child(3) {
+        width:30%;
+    }
+
+    table td:nth-child(4),table td:nth-child(5) {
+        width:15%;
+    }
+
+    table td:nth-child(6) {
+        width:4%;
+    }
+
+    thead {
+        position:sticky;
+        top:0px;
+        background:var(--bg-color);
+        outline:1px solid var(--text-color)
+    }
+    
+    th[data-order="asc"]::after {
+        content:"^";
+        padding-left:2px;
+    }
+    th[data-order="desc"]::after {
+        content:"v";
+        padding-left:2px;
+    }
+    
+    table > tr > th {
+        outline:1px solid var(--text_color)
+    }
+
+    table > tr > td {
+        box-sizing: border-box;
+    }
+
+    table > tr > td > * {
+        /* min-width: 100%; */
+        margin-left:5px;
+        margin-right:5px;
+    }
+
+    table > tr:hover {
+        background:rgba(255,255,255,0.1);
+    }
+
+    .clickable {
+        cursor:pointer;
+        user-select:none;
+        text-align:center;
+        padding:5px;
+        margin:5px;
+        background:rgba(100,100,100,0.4);
+        border-radius: 10px;
+    }
+
+    div.clickable:hover {
+        background:rgba(100,100,100,0.6)
+    }
+    
+    body {
+        margin:0px;
+        
+        width:100%;
+        height:100%;
+        
+    }
+
+    label,button {
+        user-select:none;
+    }
+
+    table,th, td{
+        
+        border-collapse: collapse;        
+    }
+
+    table,td {
+        border:1px solid silver;
+    }
+
+    .table-wrapper {
+        height:100%;
+        width:100%;
+        overflow:auto;
+        display:none;
+    }
+
+    .table-wrapper.show{
+        display:block;
+    }
+
+    #tableSelect {
+        width:100%;
+        background: var(--bg-color);
+        color: var(--text-color);
+        border:1px solid black;
+    }
+    
+
+    .loadingBarTR {
+        min-height:20px;
+        min-width:200px;
+    }
+    
+    .loadingBarContainer {
+        width:0px;
+        height:20px;
+        background:green;
+    }
+
+    /* td {
+        padding:5px;
+    } */
+
+    .loadingBarText {
+        width: fit-content;
+        margin: auto;
+    }
+
+    #mainContainer {
+        display:grid;
+        grid-template-areas:"topbar topbar" "tableSelect tableContainer";
+        grid-template-columns:150px 1fr;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        grid-template-rows: 30px 1fr;
+
+    }
+
+    #topbar {
+        grid-area:topbar;
+        display:flex;
+        gap:5px;
+    }
+
+    #refresh-subcategory-container {
+        display:flex;
+        margin-left:10px;
+        border-left: 1px solid white;
+        padding-left:2px;
+        gap:5px;
+    }
+    
+    
+
+    #tableSelectContainer {
+        grid-area:tableSelect;
+        display: flex;
+        flex-flow: column;
+    }
+
+    #tableContainers {
+        grid-area:tableContainer;
+        overflow:hidden;
+    }
+
+    #tableSelect {
+        height:100%;
+        overflow:auto;
+    }
+
+    .refresh-directory-container {
+        height:100%;
+        /* overflow:hidden; */
+    }
+    .editable > div {
+        user-select:none;
+        cursor:pointer;
+    }    
+    .editable > input {
+        width: 100%;
+        width: -moz-available;          /* WebKit-based browsers will ignore this. */
+        width: -webkit-fill-available;  /* Mozilla-based browsers will ignore this. */
+        width: fill-available;
+    }
+
+    .changed-value {
+        background:rgb(255, 225, 255);
+    }
+
+    #updateStatusModal > .update-container > .update-information {
+        display:grid;
+        grid-template-areas: 'completed-files files-uploaded' 'time-started time-remaining';
+    }
+
+    #updateStatusModal > .update-container > .update-information > .completed-files {
+        grid-area:completed-files;
+    }
+
+    #updateStatusModal > .update-container > .update-information > .files-uploaded {
+        grid-area:files-uploaded;
+    }
+
+    #updateStatusModal > .update-container > .update-information > .time-started {
+        grid-area:time-started;
+    }
+
+    #updateStatusModal > .update-container > .update-information > .time-remaining {
+        grid-area:time-remaining;
+    }
+
+    
+
+    .last-updated {
+        text-align:center;
+    }
+    .file-count {
+        text-align:center;
+    }
+
+    th {
+        font-weight:normal;
+        text-decoration:underline;
+        user-select:none;
+        cursor:pointer;
+    }
+
+    .imdir-auto-key {
+        text-align:center;
+    }
+    
+    #Help-Menu {
+        padding:10px;
+        background:var(--bg-color);
+        overflow:auto !important;
+        height:60vh;
+        min-height:400px;
+        border: 1px solid var(--text-color);
+    }
+
+    #Help-Menu div.indented-line {
+        margin-top:10px;
+        margin-bottom:20px;
+    }
+
+    #Help-Menu .indented-line {
+        margin-left:20px;
+    }
+
+    #Help-Menu .double-indented-line {
+        margin-left:40px;
+    }
+    
+    #Help-Menu p {
+        margin:0;
+    }
+
+
+
+    .help-menu-container {
+        background:var(--bg-color);
+    }
+
+    .help-menu-container .basic-command {
+        font-size:16pt;
+        color:#ffbcbc;
+    }
+    
+    .help-menu-container .parameter-item {
+        color:#9bd389;
+        font-size:12pt;
+    }
+
+    .help-menu-container .tag-item {
+        color:#b3dbff;
+        font-size:12pt;
+    }
+    .help-menu-container .command-item {
+        color: #d2b0ff;
+        font-size: 12pt;
+        background: rgba(0,0,0,0.25);
+        padding-left: 5px;
+        padding-right: 5px;
+        border-radius: 5px;
+    }
+
+    .help-menu-container div.indented-line {
+        margin-top:10px;
+        margin-bottom:20px;
+    }
+    .help-menu-container .indented-line {
+        margin-left:20px;
+    }
+
+    .help-menu-container .collapsible-container.collapsed {
+        display:none;
+    }
+
+    .help-menu-container .collapsible-header {
+        cursor:pointer;
+        user-select:none;
+    }
+
+    .help-menu-container .collapsible-header.selected {
+    }
+
+    .help-menu-container .collapsible-header:hover {
+        background:rgba(0,0,0,0.1);
+    }
+
+    .help-menu-container .collapsible-header::before {
+        content:">";
+        padding-right:5px;
+    }
+
+    .help-menu-container .collapsible-header.selected::before {
+        content:">";
+        padding-right:5px;
+        transform:rotate(90deg);
+        display:inline-block;
+    }
+
+</style>
+

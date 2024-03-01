@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="{{url_for(blueprint_name+'.load_required_file',filename='jquery.min.js')}}"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tag Editor</title>
+</head>
+<body>
+
+    <div id="mainContainer">
+        <div id="searchContainer">
+            <div id="searchInputContainer">
+                <label for="tagSearchInput">Search Tags</label><input id="tagSearchInput">
+                <div class="dropdown topbar-item" id="subCategoryDropdown">
+                    <div class="dropdown-header">
+                    <span id="categoriesSpan">[CATEGORY]</span>
+                    <span class="checkbox-count"></span>
+                    <span class="arrow-down"></span>
+                    </div>
+                    <div class="dropdown-content" id="category-container">
+                        <div id="maincategory-container">
+                            {%for main_category in available_categories%}
+                            <div class="main-category" maincategory="{{main_category}}">{{main_category}}</div>
+                            {%endfor%}
+                        </div>
+                        <div id="subcategory-container">
+
+                        </div>
+                        
+                    </div>
+                </div>
+                <div id="privateModeCheckContainer" style="user-select: none;" title="Allow private results.">
+                    <input type="checkbox" id="privateModeCheckbox">
+                    <label for="privateModeCheckbox">Private</label>
+                </div>
+                <div id="helpMenu">
+                    <button class="help_button" onclick="helpMenu.show()">Help</button>
+                </div>
+            </div>
+            <div id="searchCategoryContainer">
+                
+            </div>
+            <div id="searchSubCategoryContainer">
+                
+            </div>
+            
+            <div id="tag_stats">
+                <div id="tag_button_container">
+                    <button title="Removes the tag from the database.&#10;Must have no files tagged first." id="delete_tag_button" disabled=true onclick="deleteTag()">Delete Tag</button>
+                    <button title="Removes the tag from all of the images." id="remove_tag_from_images_button" disabled=true onclick="removeTagFromFiles()">Remove Tag From Files</button>
+                </div>
+
+                <div id="tag_basic_info">
+                    <span id="tag_category_span"></span><span id="tag_separator_span"></span><span id="tag_detail_span"></span>
+
+                </div>
+                <div id="tag_basic_info_update_input_container">
+                    <div>
+                        <label for="tag_basic_info_update_category_input">Category:<br></label>
+                        <input id="tag_basic_info_update_category_input" disabled>
+                    </div>
+                    <div>
+                        <label for="tag_basic_info_update_detail_input">Detail:<br></label>
+                        <input id="tag_basic_info_update_detail_input" disabled>
+                    </div>
+                    
+                </div>
+                <div id="notes_input_container">
+                    <label for="tag_basic_info_update_notes_input">Notes:<br></label>
+                    <textarea id="tag_basic_info_update_notes_input" disabled></textarea>
+                </div>
+                <button id="update_tag_button" disabled=true onclick="updateTagData()">Update Tag</button>
+
+                <div id="tags_crossover_data">
+                    
+                </div>
+
+            </div>
+
+            <div id="searchPreviewContainer">
+                
+            </div>
+            
+
+        </div>
+    </div>
+
+</body>
+
+
+
+
+</html>
+
+<script>
+
+    {% include 'styles_jinja/theme_load.html'%}
+    const csrf_token = "{{csrf_token()}}"
+    let current_loaded_data = {category:'',detail:'',search:'',tag_auto_key:null}
+    let last_clicked_category = '';
+    let settings = {
+        can_interact:true,
+        currently_loading:false,
+        currentCategoryPage:1,
+        currentDetailPage:1,
+    }
+
+    let lastCategory = '';
+    const databaseCategories = {{available_categories|tojson}};
+    const dropdownContainer = document.querySelector('.dropdown');
+    const dropdownHeader = document.querySelector('.dropdown-header');
+    const dropdownContent = document.querySelector('.dropdown-content');
+    const categorySpan = document.querySelector('#categoriesSpan');
+    const checkboxCount = document.querySelector('.checkbox-count');
+    const checkboxes = document.getElementById('subCategoryDropdown').querySelectorAll('input[type="checkbox"]');
+    const tagSearchInput = document.getElementById('tagSearchInput');
+    const searchCategoryContainer = document.getElementById('searchCategoryContainer');
+    const searchSubCategoryContainer = document.getElementById('searchSubCategoryContainer');
+    const searchPreviewContainer = document.getElementById('searchPreviewContainer');
+    const privateModeCheckbox = document.getElementById('privateModeCheckbox');
+
+    const imageSize = 200;
+
+    searchPreviewContainer.style.gridTemplateRows = `repeat(auto-fill,minmax(${imageSize}px,1fr))`
+    searchPreviewContainer.style.gridTemplateColumns = `repeat(auto-fill,minmax(${imageSize}px,1fr))`
+    
+
+    const tag_info_elements = {
+        tag_category_span:document.getElementById('tag_category_span'),
+        tag_separator_span:document.getElementById('tag_separator_span'),
+        tag_detail_span:document.getElementById('tag_detail_span'),
+        tag_basic_info_update_input:document.getElementById('tag_basic_info_update_input'),
+        tag_basic_info_update_category_input:document.getElementById('tag_basic_info_update_category_input'),
+        tag_basic_info_update_detail_input:document.getElementById('tag_basic_info_update_detail_input'),
+        tag_basic_info_update_notes_input:document.getElementById('tag_basic_info_update_notes_input'),
+        tags_crossover_data:document.getElementById('tags_crossover_data'),
+        update_tag_button:document.getElementById('update_tag_button'),
+        delete_tag_button:document.getElementById('delete_tag_button'),
+        remove_tag_from_images_button:document.getElementById('remove_tag_from_images_button')
+    }
+    
+    class Modal {
+        constructor(contentID,createBackground=true) {
+
+            this.hidden = true;
+
+            // Create the content div
+            this.content = document.createElement('div');
+            this.content.style.position = 'fixed';
+            this.content.style.top = '50%';
+            this.content.style.left = '50%';
+            this.content.style.transform = 'translate(-50%, -50%)';
+            // this.content.style.backgroundColor = 'white';
+            this.content.style.zIndex = '10000';
+            this.content.style.borderRadius = '20px';
+            this.content.style.overflow = 'auto';
+            this.content.id = contentID;
+
+            if (createBackground) {
+                // Create the background div
+                this.background = document.createElement('div');
+                this.background.style.position = 'fixed';
+                this.background.style.top = '0';
+                this.background.style.left = '0';
+                this.background.style.width = '100%';
+                this.background.style.height = '100%';
+                this.background.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                this.background.style.zIndex = '9999';
+                this.background.style.display = 'none';
+                
+
+                
+                
+
+                // Add the content div to the background div
+                this.background.appendChild(this.content);
+
+                // Add the background div to the body element
+                document.body.appendChild(this.background);
+
+            }
+            
+        }
+
+        // Method to set the size of the content div
+        setSize(width, height) {
+            this.content.style.width = `${width}px`;
+            this.content.style.height = `${height}px`;
+        }
+
+        setHTML(innerHTML) {
+            this.content.innerHTML = innerHTML;
+        }
+
+        updateItem() {
+            console.log("Modify this method to update the needed information");
+        }
+
+        // Method to show the modal
+        show() {
+            this.hidden = false;
+            this.background.style.display = 'block';
+        }
+
+        // Method to hide the modal
+        hide() {
+            this.hidden = true;
+            this.background.style.display = 'none';
+        }
+    }
+
+    class LoadingBar extends Modal {
+        constructor(contentID,createBackground=true) {
+            super(contentID,createBackground);
+            this.content.style.width = '250px';
+            this.content.style.height = '160px';
+            this.loadingAjax = undefined;
+            this.loadingInterval = undefined;
+            this.loadingTimeout = undefined;
+            this.identifier = undefined;
+            this.lastUpdateObject = undefined;
+            this.stuckLimit = 20;
+            this.stuckCounter = 0;
+            this.container = this.content.appendChild(document.createElement('div'));
+            this.container.style.background = 'rgba(50,50,50,1)'
+            this.container.style.padding = '10px';
+            this.container.style.height='100%';
+            // this.container.style.width = '100%';
+
+
+            this.titleBar = this.container.appendChild(document.createElement('div'));
+            this.titleBar.style.marginBottom = '10px';
+            this.progressBar = this.container.appendChild(document.createElement('div'));
+            this.progressBar.style.border = '1px solid var(--text-color)';
+            this.progressBar.style.width = '100%';
+            this.progressBar.style.height = '30px';
+            this.progressBar.style.margin = 'auto';
+            this.progressBar.style.position = 'relative';
+
+            this.progressFiller = this.progressBar.appendChild(document.createElement('div'))
+            this.progressFiller.style.position = 'absolute';
+            this.progressFiller.style.top = '0px';
+            this.progressFiller.style.left = '0px';
+            this.progressFiller.style.width = '0px';
+            this.progressFiller.style.height = '30px';
+            this.progressFiller.style.background = 'green';
+
+            this.progressText = this.progressBar.appendChild(document.createElement('div'));
+            this.progressText.style.position = 'absolute';
+            this.progressText.style.top = '50%';
+            this.progressText.style.left = '50%';
+            this.progressText.style.translate = '-50% -50%';
+
+            this.continuedProgressContainer = this.container.appendChild(document.createElement('div'))
+            this.continuedProgressInfo = this.continuedProgressContainer.appendChild(document.createElement('span'))
+            this.continuedProgressInfo.innerText = 'Progress: ';
+            this.continuedProgress = this.continuedProgressContainer.appendChild(document.createElement('span'))
+
+            this.elapsedDurationContainer = this.container.appendChild(document.createElement('div'))
+            this.elapsedDurationInfo = this.elapsedDurationContainer.appendChild(document.createElement('span'))
+            this.elapsedDurationInfo.innerText = 'Elapsed: ';
+            this.elapsedDuration = this.elapsedDurationContainer.appendChild(document.createElement('span'))
+
+            this.timeRemainingContainer = this.container.appendChild(document.createElement('div'))
+            this.timeRemainingInfo = this.timeRemainingContainer.appendChild(document.createElement('span'))
+            this.timeRemainingInfo.innerText = 'Time Remaining: ';
+            this.timeRemaining = this.timeRemainingContainer.appendChild(document.createElement('span'));
+            
+            
+
+
+        }
+
+        setTitle(title) {
+            this.titleBar.innerText = title;
+        }
+
+        setIdentifier(identifier) {
+            this.identifier = identifier;
+            this.abortLoading();
+        }
+
+        abortLoading() {
+            this.stuckCounter = 0;
+            try{clearInterval(this.loadingInterval)}
+            catch{};
+            try{this.loadingAjax.abort()}
+            catch{};
+            try{clearTimeout(this.loadingTimeout)}
+            catch{};
+        }
+
+
+        loadStatus(identifier) {
+            let thisReference = this;
+            this.loadingAjax = $.ajax({
+                type:'GET',
+                url:"{{url_for(blueprint_name+'.get_loading_status_base')}}"+`${identifier}`,
+                success:function(data){
+                    thisReference.updateElements(data);
+                }
+            })
+        }
+
+        updateElements(updateData) {
+            // console.log(updateData);
+            if (Object.keys(updateData).includes('progress_data')) {
+
+                if (JSON.stringify(this.lastUpdateObject) === JSON.stringify(updateData)) {
+                    this.stuckCounter+=1;
+                    if (this.stuckCounter >= this.stuckLimit) {
+                        this.hide();
+                    }
+                }
+
+                if (updateData.progress_data.percentage_complete == 1) {
+                    this.hide();
+                }
+
+                this.continuedProgress.innerText = `${updateData.progress_data.n}/${updateData.progress_data.total}`
+                this.progressFiller.style.width = `${parseInt(updateData.progress_data.percentage_complete*10000)/100}%`
+                this.progressText.innerText = `${parseInt(updateData.progress_data.percentage_complete*10000)/100}%`
+                this.timeRemaining.innerText = `${updateData.progress_data.remaining_time}`
+                this.elapsedDuration.innerText = `${updateData.progress_data.elapsed}`
+            }
+
+
+            // try{
+                
+            // } catch{}
+            this.lastUpdateObject = updateData;
+        }
+
+        clearElements() {
+
+        }
+
+        initiateLoadingLoop(intervalSpeed=1000) {
+            this.abortLoading();
+            this.loadStatus(this.identifier);
+            this.loadingInterval = setInterval(() => {
+                this.loadStatus(this.identifier);
+            }, intervalSpeed);
+        }
+
+        show(title,identifier,delay=0) {
+            this.loadingTimeout = setTimeout(() => {
+                super.show();
+                this.setTitle(title);
+                this.setIdentifier(identifier);
+                this.initiateLoadingLoop();
+            }, delay);
+        }
+
+        hide() {
+            super.hide();
+            this.abortLoading();
+            this.clearElements();
+        }
+
+
+    }
+
+    class VirtualScroller {
+        constructor(container, items, itemWidth, itemHeight, verticalPadding = 0,horizontalPadding = 0,even_horizontal_spread = true,) {
+            this.container = container;
+            this.items = items;
+            this.itemWidth = itemWidth;
+            this.itemHeight = itemHeight;
+            this.even_horizontal_spread = even_horizontal_spread;
+            this.horizontalPadding = horizontalPadding;
+            this.containerVerticalOffset = 10
+            this.scrollLeftUntilBottom = 0;
+            this.currentScrollY = 0;
+            this.scrollPercentage = 0;
+            this.containerHeight = 0
+
+            this.renderItemFunc = (parent,item,index) => {
+                const mainDiv = document.createElement('div');
+                mainDiv.classList.add('image-container');
+
+                const tempImage = document.createElement('img')
+                tempImage.src = getImageURL(item.FILE_NAME);
+                mainDiv.appendChild(tempImage);
+
+                return mainDiv;
+            }
+            this.postScrollFunc = () => {
+
+            }
+
+            this.verticalPadding = verticalPadding;
+            this.renderedItems = {};
+            this.totalHeight = this.getNumRows() * this.itemHeight;
+            this.container.innerHTML = `<div style="height: ${this.totalHeight}px;"></div>`;
+            this.scroller = this.container.querySelector('div');
+            this.container.addEventListener('scroll', this.render.bind(this));
+            this.resize();
+            
+            
+            window.addEventListener('resize', this.resize.bind(this));
+            this.render();
+        }
+
+        getNumColumns() {
+            return Math.floor(this.container.clientWidth / (this.itemWidth+(this.horizontalPadding*2)));
+        }
+
+
+        getNumRows() {
+            // const numCols = this.getNumColumns();
+            // const numRows = Math.ceil(this.items.length / numCols);
+            return 1;
+        }
+
+
+        resize() {
+        const numRows = this.getNumRows();
+        const containerHeight = numRows * this.itemHeight;
+        this.scroller.style.height = `${containerHeight}px`;
+        this.totalHeight = containerHeight;
+        this.resetRender();
+        }
+
+        getItemPosition(index) {
+            let currRow = Math.floor(index/this.getNumColumns());
+            let currCol = Math.floor(index % this.getNumColumns());
+
+            let top = this.containerVerticalOffset+(currRow * this.itemHeight+(currRow*(this.verticalPadding*2)));
+            let left = (currCol * this.itemWidth+(currCol*this.horizontalPadding))
+
+            return {top:top,
+                    left:left
+                    }
+        }
+
+        scrollToIndex(index,behavior='smooth') {
+            let positionData = this.getItemPosition(index)
+            let containerHeight_half = (this.container.clientHeight / 2)
+            let currentScrollPosition_Center = this.container.scrollTop
+            
+            if (containerHeight_half < this.itemHeight) {
+                    containerHeight_half = 0;
+                }
+
+
+            if (this.itemHeight > containerHeight_half) {
+                this.container.scrollTo({top:positionData.top+containerHeight_half-(this.verticalPadding),behavior:'smooth'});
+            }
+            else if (currentScrollPosition_Center <= positionData.top-containerHeight_half) {
+                //lower half
+                this.container.scrollTo({top:positionData.top-containerHeight_half-(this.verticalPadding),behavior:'smooth'});
+            } else {
+                //upper half
+                this.container.scrollTo({top:positionData.top-containerHeight_half+(this.itemHeight+(this.verticalPadding)),behavior:'smooth'});   
+            }
+        }
+
+        render() {
+            const scrollTop = this.container.scrollTop;
+            const scrollBottom = scrollTop + this.container.clientHeight;
+            let startRow = Math.floor(scrollTop / (this.itemHeight+(this.verticalPadding*2)));
+            startRow-=2
+            if (startRow < 0) {
+                startRow = 0;
+            }
+            let endRow = Math.ceil(scrollBottom / this.itemHeight);
+            endRow+=2;
+            
+            const startCol = 0;
+            const endCol = this.getNumColumns();
+            const fragment = document.createDocumentFragment();
+            
+            
+            
+            let indexRange = []
+            let addedItems = 0;
+            for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+                for (let colIndex = startCol; colIndex < endCol; colIndex++) {
+                    const index = rowIndex * endCol + colIndex;
+                    indexRange.push(index);
+                    if (index >= this.items.length) {
+                        continue;
+                    }                        
+                    else if (!this.renderedItems[index]) {
+                        const item = document.createElement('div');
+                        item.style.width = `${this.itemWidth}px`;
+                        item.style.height = `${this.itemHeight}px`;
+                        item.style.position = 'absolute';
+                        item.style.top = `${this.containerVerticalOffset+(rowIndex * this.itemHeight+(rowIndex*(this.verticalPadding*2)))}px`;
+                        
+                        if (this.even_horizontal_spread) {
+                            let gap = (this.container.clientWidth - (this.itemWidth*endCol))
+                            item.style.left = `${((colIndex * this.itemWidth) + ((gap/(endCol+1))*(colIndex+1))) }px`;
+                            
+                        } else {
+                            item.style.left = `${(colIndex * this.itemWidth+(colIndex*this.horizontalPadding))}px`;
+                        }
+                        
+                        item.setAttribute('itemIndex',index);
+                        let innerDiv = this.renderItemFunc(item,this.items[index],index);
+                        item.appendChild(innerDiv);
+                        
+                        fragment.appendChild(item);
+                        this.renderedItems[index] = item;
+                        addedItems+=1
+                    } 
+                    }
+            }
+
+            let renderedItemIndexes = Object.keys(this.renderedItems);
+            renderedItemIndexes = renderedItemIndexes.map(str => Number(str));
+            //get list of items that are no longer rendered
+            if (renderedItemIndexes.length > 0) {
+                let removedIndexes = renderedItemIndexes.filter(item => !indexRange.includes(item))
+                
+            }
+            
+
+            // this.scroller.innerHTML = '';
+            this.scroller.appendChild(fragment);
+
+            this.scrollLeftUntilBottom = this.container.scrollHeight - (this.container.scrollTop+this.container.clientHeight);
+            this.currentScrollY = this.container.scrollHeight - (this.container.scrollTop+this.container.clientHeight);
+            this.scrollPercentage = (this.container.scrollTop/(this.container.scrollHeight - this.container.clientHeight)) ;
+
+            this.postScrollFunc()
+
+            }
+
+
+        clearItems() {
+            this.container.scrollTo({top:0});
+            this.items = [];
+            this.totalHeight = 0;
+            this.resetRender();
+        }
+
+        resetRender() {
+            this.renderedItems = [];
+            this.scroller.innerHTML = '';
+            this.render();
+        }
+        updateItemSize(itemWidth, itemHeight) {
+            this.itemWidth = itemWidth;
+            this.itemHeight = itemHeight;
+            this.totalHeight = Math.ceil(this.items.length / this.getNumColumns()) * (this.itemHeight + (this.verticalPadding*2));
+            this.container.querySelector('div').style.height = `${this.totalHeight}px`;
+            this.resetRender();
+            
+        }
+
+        addItems(newItems) {
+            this.items.push(...newItems);
+            this.totalHeight = Math.ceil(this.items.length / this.getNumColumns()) * (this.itemHeight + this.verticalPadding*2);
+            this.container.querySelector('div').style.height = `${this.totalHeight}px`;
+            this.render();
+        }
+
+        removeItem(index) {
+            this.items.splice(index,1);
+            this.totalHeight = Math.ceil(this.items.length / this.getNumColumns()) * (this.itemHeight + this.verticalPadding);
+            this.container.querySelector('div').style.height = `${this.totalHeight}px`;
+            this.resetRender();
+        }
+        
+    }
+
+    document.querySelectorAll('#maincategory-container > div').forEach((mainCategory) => {
+        mainCategory.onclick = () => {
+            let sub_categories = databaseCategories[mainCategory.getAttribute('maincategory')];
+            //load sub_category
+            // let subCategoryContainer = document.querySelector('#subcategory-container');
+            // subCategoryContainer.innerHTML = ''
+
+            // sub_categories.forEach((sub_category) => {
+            //     let newLabel = document.createElement('label')
+            //     newLabel.classList.add('sub-category');
+            //     let newInput = document.createElement('input')
+            //     newInput.type = 'checkbox';
+            //     newInput.name = 'option';
+            //     newInput.value = sub_category;
+            //     newLabel.innerText = sub_category;
+            //     subCategoryContainer.appendChild(newLabel);
+            //     newLabel.appendChild(newInput);
+
+            // })
+            let changedValue = false;
+            document.querySelectorAll('#maincategory-container > .selected').forEach((selected) => {
+                selected.classList.remove('selected')
+            })
+            if (lastCategory != mainCategory.getAttribute('maincategory')) {
+                mainCategory.classList.add('selected');
+                currentMainCategory = mainCategory.getAttribute('maincategory');
+                if (lastCategory != currentMainCategory) {
+                    changedValue = true;
+                }
+                lastCategory = currentMainCategory;
+                categorySpan.innerText = currentMainCategory;
+                // localStorage.setItem('searchcurrentMainCategory',currentMainCategory);
+                if (document.readyState == 'complete') {
+                    checkedCategoryItems = [];
+                    // localStorage.setItem('searchCheckedSubCategories',checkedCategoryItems.join("||"));
+                }
+                
+                // checkboxCount.innerText = `[${checkedCategoryItems.length}]`
+                // searchFiles();
+                
+            } else {
+                categorySpan.innerText = '[CATEGORY]';
+                if (lastCategory != '') {
+                    changedValue = true;
+                    lastCategory = '';
+                }
+            }
+            if (changedValue) {
+                search_tag_categories(true);
+            }
+            dropdownContent.classList.remove('show');
+            //Load lastSearches[category]
+            
+            
+        }
+    })
+
+    var lastMainCategory = '';
+    currentMainCategory = localStorage.getItem('searchcurrentMainCategory');
+    if (currentMainCategory == null) {
+        if (Object.keys(databaseCategories).length > 0) {
+            currentMainCategory = Object.keys(databaseCategories)[0];
+        }
+    }
+
+    let lastSubCategories = [];
+    checkedCategoryItems = localStorage.getItem('searchCheckedSubCategories');
+    if (checkedCategoryItems == null) {
+        checkedCategoryItems = [];
+    } else {
+        
+        checkedCategoryItems = checkedCategoryItems.split('||');
+        checkedCategoryItems = checkedCategoryItems.filter(function(record) {
+            return record !== "";
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded',function() {
+
+        tag_info_elements.tag_basic_info_update_category_input.value = '';
+        tag_info_elements.tag_basic_info_update_detail_input.value = '';
+        tag_info_elements.tag_basic_info_update_category_input.original_value = null;
+        tag_info_elements.tag_basic_info_update_detail_input.original_value = null;
+        tag_info_elements.tag_basic_info_update_notes_input.value = '';
+
+
+        // let selectedMainCategory = document.querySelector(`#maincategory-container > .main-category[maincategory="${currentMainCategory}"]`)
+        // if (selectedMainCategory != null) {
+        //     selectedMainCategory.onclick();
+            
+        //     //select previously selected items;
+        //     checkedCategoryItems.forEach((subcategory) => {
+        //         let selectedSubCategory = document.querySelector(`#subcategory-container > label > input[type="checkbox"][value="${subcategory}"]`)
+        //         if (selectedSubCategory !== null) {
+        //             selectedSubCategory.checked = true;
+        //             // console.log(selectedSubCategory)
+        //         }
+        //     })
+        //     // checkboxCount.innerText = `[${checkedCategoryItems.length}]`
+        // }
+    })
+
+    document.addEventListener('keydown',() => {
+        if (event.key == 'F3') {
+            event.preventDefault();
+            tagSearchInput.focus();
+            tagSearchInput.select();
+        }
+    })
+
+    document.addEventListener('click',() => {
+        const isClickedInsideDropdown = dropdownContainer.contains(event.target);
+        if (!isClickedInsideDropdown) {
+            dropdownContent.classList.remove('show');
+        }
+        
+    })
+
+    function search_tag_categories(clearAll=false) {
+        tagSearchInput.disabled = true;
+        settings.can_interact = false;
+        if (clearAll) {
+            settings.currentCategoryPage = 1;
+            settings.currentDetailPage = 1;
+            virtualScrollerCategories.allowLoading = true;
+        }
+        if (clearAll) {
+                        virtualScrollerCategories.clearItems();
+                        virtualScrollerDetails.clearItems();
+                    }
+        
+        
+        let dataDict = {SEARCH_TEXT:tagSearchInput.value,
+            SEARCH_TYPE:'CATEGORY',
+            PAGE:settings.currentCategoryPage
+        };
+        
+
+        let selectedMainCategory = dropdownContainer.querySelector('.selected')
+        if (selectedMainCategory != undefined) {
+            dataDict.MAIN_CATEGORY = selectedMainCategory.getAttribute('maincategory');
+        }
+
+
+
+        $.ajax({
+            type: "GET",
+            url: "{{url_for(blueprint_name+'.tag_info_search')}}",
+            data:dataDict,
+            success: function(data) {
+                // console.log(data);
+                tagSearchInput.disabled = false;
+                settings.can_interact = true;
+                settings.currently_loading = false;
+                if (data.length > 0) {    
+                    virtualScrollerCategories.addItems(data);
+                    virtualScrollerCategories.allowLoading = true;
+                } else {
+                    virtualScrollerCategories.allowLoading = false;
+                }
+                tagSearchInput.focus();
+            },
+            error:function(err){
+                alert(err.responseText);
+                tagSearchInput.disabled = false;
+                settings.can_interact = true;
+                settings.currently_loading = false;
+                tagSearchInput.focus();
+            },
+            fail: function() {
+                alert('Database Access Denied');
+            }
+        })   
+    }
+
+    function getImageURL(filename,size=undefined,frame=undefined,custom_size=1000) {
+        filename = encodeURIComponent(filename);
+        let Dict = {};
+        if (size) {
+            Dict['size'] = size;
+            if (size === 'custom') {
+                Dict['custom_size'] = custom_size;
+            }
+        }
+        if (frame != undefined) {
+            Dict['frame'] = frame
+        }
+        
+        if (Object.keys(Dict).length > 0) {
+            let dataString = Object.keys(Dict).map(function(key){ return key+"="+Dict[key] }).join("&")
+            return "{{url_for(blueprint_name+'.load_image_file_base')}}"+filename+'?'+dataString
+        } else {
+            return "{{url_for(blueprint_name+'.load_image_file_base')}}"+filename+'?size='+currentSize;
+        }
+        
+    }
+
+    function search_tag_category_details(category,clearAll=false) {
+        tagSearchInput.disabled = true;
+        if (clearAll) {
+            virtualScrollerDetails.clearItems();
+            virtualScrollerDetails.allowLoading = true;
+            settings.currentDetailPage = 1;
+        }
+        let dataDict = {SEARCH_TEXT:tagSearchInput.value,
+            SEARCH_TYPE:'DETAILS',
+            CATEGORY:category,
+            PAGE:settings.currentDetailPage
+        };
+
+        let selectedMainCategory = dropdownContainer.querySelector('.selected')
+        if (selectedMainCategory != undefined) {
+            dataDict.MAIN_CATEGORY = selectedMainCategory.getAttribute('maincategory');
+        }
+
+        $.ajax({
+            type: "GET",
+            url: "{{url_for(blueprint_name+'.tag_info_search')}}",
+            data:dataDict,
+            success: function(data) {
+                settings.currently_loading = false;
+                if (data.length === 0) {
+                    virtualScrollerDetails.allowLoading = false;
+                } else {
+                    virtualScrollerDetails.allowLoading = true;
+                }
+                // console.log(data);
+                tagSearchInput.disabled = false;
+                virtualScrollerDetails.addItems(data);
+            },
+            error:function(err){
+                alert(err.responseText);
+                tagSearchInput.disabled = false;
+                settings.currently_loading = false;
+            },
+            fail: function() {
+                alert('Database Access Denied');
+            }
+        })   
+    }
+
+    function update_tag_info_elements(category,detail,notes) {
+        if (category == null && detail == null) {
+            tag_info_elements.tag_category_span.innerText = '';
+            tag_info_elements.tag_detail_span.innerText = '';
+            tag_info_elements.tag_separator_span.innerText = '';
+            tag_info_elements.tag_basic_info_update_category_input.value = '';
+            tag_info_elements.tag_basic_info_update_detail_input.value = '';    
+            tag_info_elements.tag_basic_info_update_category_input.original_value = null;
+            tag_info_elements.tag_basic_info_update_detail_input.original_value = null;
+            
+            
+        } else {
+            tag_info_elements.tag_category_span.innerText = category;
+            tag_info_elements.tag_detail_span.innerText = detail;
+            tag_info_elements.tag_separator_span.innerText = ':';
+            tag_info_elements.tag_basic_info_update_category_input.value = category;
+            tag_info_elements.tag_basic_info_update_detail_input.value = detail;
+            tag_info_elements.tag_basic_info_update_category_input.original_value = category;
+            tag_info_elements.tag_basic_info_update_detail_input.original_value = detail;
+            
+            
+        }
+
+        if ((notes == null || notes == undefined)) {
+            tag_info_elements.tag_basic_info_update_notes_input.original_value = null;
+            tag_info_elements.tag_basic_info_update_notes_input.value = '';
+        } else {
+            tag_info_elements.tag_basic_info_update_notes_input.original_value = notes;
+            tag_info_elements.tag_basic_info_update_notes_input.value = notes;
+        }
+        
+        tag_info_elements.tag_basic_info_update_category_input.classList.remove('changed-value')
+        tag_info_elements.tag_basic_info_update_detail_input.classList.remove('changed-value')
+        tag_info_elements.tag_basic_info_update_notes_input.classList.remove('changed-value')
+
+        tag_info_elements.tag_basic_info_update_category_input.disabled = false;
+        tag_info_elements.tag_basic_info_update_detail_input.disabled = false;
+        tag_info_elements.tag_basic_info_update_notes_input.disabled = false;
+
+    }
+
+
+    function load_image_files(tag_category,tag_detail) {
+        settings.can_interact = false;
+        let itemLimit = Math.floor(Math.floor((searchPreviewContainer.clientWidth / (imageSize+5))) * Math.floor((searchPreviewContainer.clientHeight / (imageSize+5))));
+        const specialChars = /[\[\]]/g;
+        let tagText = `${tag_category}:${tag_detail}`
+
+
+        let searchLimit = (itemLimit >= 200) ? itemLimit:200 //searches 200 items to randomize unless the itemlimit is higher (however that happens)
+        
+        dataDict = {'SEARCH':`^${tagText.replace(specialChars, '\\$&')}^,#lt`,'PAGE':1,'LIMIT':searchLimit};
+
+        if (privateModeCheckbox.checked) {
+            dataDict.SEARCH+=',#private';
+        }
+
+        update_tag_info_elements(null,null,null);
+
+        let selectedMainCategory = dropdownContainer.querySelector('.selected')
+        if (selectedMainCategory != undefined) {
+            dataDict.MAIN_CATEGORY = selectedMainCategory.getAttribute('maincategory');
+        }
+
+        $.ajax({
+            type: "GET",
+            url: "{{url_for(blueprint_name+'.get_files')}}",
+            data:dataDict,
+            success: function(data) {
+                // console.log(data);
+                settings.can_interact = true;
+                searchPreviewContainer.innerHTML = '';
+
+                loadedData = data.FILES;
+                loadedData.sort(() => Math.random() > 0.5)
+                loadedData = loadedData.slice(0,itemLimit);
+
+                loadedData.forEach((item) => {
+                    let newImageContainer = searchPreviewContainer.appendChild(document.createElement('div'));
+                    let newImage = newImageContainer.appendChild(document.createElement('img'));
+                    newImage.src = getImageURL(item.FILE_NAME,'small');
+                    newImageContainer.classList.add('preview-image-container')
+
+                    newImage.ondblclick = () => {
+                        window.open(getImageURL(item.FILE_NAME,'full'));
+                    }
+
+                })
+            },
+            error:function(err){
+                // alert(err.responseText);
+                settings.can_interact = true;
+            },
+            fail: function() {
+                alert('Database Access Denied');
+            }
+        })
+
+        tag_info_elements.tags_crossover_data.innerHTML = '';
+
+        $.ajax({
+            type: "GET",
+            url: "{{url_for(blueprint_name+'.tag_info')}}",
+            data:{
+                TAG_AUTO_KEY:current_loaded_data.tag_auto_key,
+                SEARCH_TEXT:tagSearchInput.value
+            },
+            success: function(data) {
+                //Load tag information
+                // console.log(data.tag_info);
+                //Load directory information
+                console.log(data);
+                update_tag_info_elements(tag_category,tag_detail,data.tag_info.notes);
+                current_loaded_data.notes = data.tag_info.notes;
+
+                let groupedInformation = {};
+                let totalImageCount = 0;
+                let groupedDirectoryInfoContainer = tag_info_elements.tags_crossover_data.appendChild(document.createElement('div'))
+                groupedDirectoryInfoContainer.classList.add('grouped-directory-info-container')
+                let groupedDirectoryInfo = groupedDirectoryInfoContainer.appendChild(document.createElement('table'))
+                groupedDirectoryInfo.classList.add('grouped-directory-info');
+                groupedDirectoryInfoThead = groupedDirectoryInfo.appendChild(document.createElement('thead'))
+                groupedDirectoryInfoTBody = groupedDirectoryInfo.appendChild(document.createElement('tbody'))
+                let allDirectoryInfoContainer = tag_info_elements.tags_crossover_data.appendChild(document.createElement('div'))
+                allDirectoryInfoContainer.classList.add('all-directory-info-container');
+                let allDirectoryInfo = allDirectoryInfoContainer.appendChild(document.createElement('table'))
+                allDirectoryInfo.classList.add('all-directory-info');
+
+                allDirectoryInfoThead = allDirectoryInfo.appendChild(document.createElement('thead'));
+                allDirectoryInfoTbody = allDirectoryInfo.appendChild(document.createElement('tbody'));
+
+                let headerRow = allDirectoryInfoThead.appendChild(document.createElement('tr'));
+                let headers = ['Main Category','Sub Category','Path','Imdir_AK','Total Count']
+                let gdit_headers = ['total images','total count'];
+
+                Array.from(headers).forEach((header) => {
+                    let headerDetail = headerRow.appendChild(document.createElement('th'))
+                    headerDetail.innerText = header;
+                    headerDetail.dataset.column = header;
+                })
+                
+                Array.from(data.crossover_info).forEach((directory) => {
+                    if (!Object.keys(groupedInformation).includes(directory.main_category)) {
+                        groupedInformation[directory.main_category] = {'sub_categories':{},'total_count':0}
+                    }
+
+                    if (!Object.keys(groupedInformation[directory.main_category]).includes(directory.sub_category)) {
+                        groupedInformation[directory.main_category].sub_categories[directory.sub_category] = {'total_count':0}
+                    }
+                    groupedInformation[directory.main_category].total_count+=directory.total_count;
+                    groupedInformation[directory.main_category].sub_categories[directory.sub_category].total_count+=directory.total_count;
+                    totalImageCount+=directory.total_count;
+                    
+                    // console.log(directory.main_category,directory.sub_category,directory.path)
+                    
+                    let newDiv = allDirectoryInfoTbody.appendChild(document.createElement('tr'));
+
+                    let mainCategoryDiv = newDiv.appendChild(document.createElement('td'));
+                    let subCategoryDiv = newDiv.appendChild(document.createElement('td'));
+                    let pathDiv = newDiv.appendChild(document.createElement('td'));
+                    let imdir_akDiv = newDiv.appendChild(document.createElement('td'));
+                    let totalCountDiv = newDiv.appendChild(document.createElement('td'));
+
+                    mainCategoryDiv.dataset.column = headers[0]
+                    subCategoryDiv.dataset.column = headers[1]
+                    pathDiv.dataset.column = headers[2]
+                    imdir_akDiv.dataset.column = headers[3]
+                    totalCountDiv.dataset.column = headers[4].toLocaleString();
+                    
+
+                    mainCategoryDiv.innerText = directory.main_category;
+                    subCategoryDiv.innerText = directory.sub_category;
+                    pathDiv.innerText = directory.path;
+                    imdir_akDiv.innerText = directory.imdir_auto_key;
+                    totalCountDiv.innerText = directory.total_count
+                    
+
+                    mainCategoryDiv.dataset.value = directory.main_category;
+                    subCategoryDiv.dataset.value = directory.sub_category;
+                    pathDiv.dataset.value = directory.path;
+                    imdir_akDiv.dataset.value = directory.imdir_auto_key;
+                    totalCountDiv.dataset.value = directory.total_count
+
+                })
+
+                // console.log(groupedInformation);
+                // console.log("Total Image Count",totalImageCount);
+
+                
+                let gdit_td1 = groupedDirectoryInfoThead.appendChild(document.createElement('th'))
+                let gdit_td2 = groupedDirectoryInfoThead.appendChild(document.createElement('th'))
+
+                
+                gdit_td1.dataset.column =  gdit_headers[0]
+                gdit_td2.dataset.column =  gdit_headers[1]
+
+                gdit_td1.innerText = `Total Images`;
+                gdit_td2.innerText = totalImageCount.toLocaleString();
+
+                if (totalImageCount > 0) {
+                    tag_info_elements.delete_tag_button.disabled = true;
+                    tag_info_elements.remove_tag_from_images_button.disabled = false;
+                } else {
+                    tag_info_elements.delete_tag_button.disabled = false;
+                    tag_info_elements.remove_tag_from_images_button.disabled = true;
+                }
+
+                Array.from(Object.keys(groupedInformation)).forEach((groupInfoKey) => {
+                    let newCountRow = groupedDirectoryInfoTBody.appendChild(document.createElement('tr'))
+                    let categoryName = newCountRow.appendChild(document.createElement('td'));
+                    let categoryCount = newCountRow.appendChild(document.createElement('td'));
+                    categoryName.dataset.column = gdit_headers[0];
+                    categoryCount.dataset.column = gdit_headers[1];
+                    categoryName.innerText = groupInfoKey;
+                    categoryCount.innerText = groupedInformation[groupInfoKey].total_count.toLocaleString();
+                    categoryName.dataset.value = groupInfoKey;
+                    categoryCount.dataset.value = groupedInformation[groupInfoKey].total_count;
+                })
+
+                
+                setup_table_sort(allDirectoryInfo);
+                setup_table_sort(groupedDirectoryInfo);
+
+
+            },
+            error:function(err){
+                alert(err.responseText);
+                settings.can_interact = true;
+            },
+            fail: function() {
+                alert('Database Access Denied');
+            }
+        })
+
+
+    }
+
+    tagSearchInput.onkeyup = () => {
+        if (event.key === 'Enter') {
+            search_tag_categories(true);
+        }
+    }
+
+
+    dropdownHeader.addEventListener('click', function() {
+        dropdownContent.classList.toggle('show');
+        dropdownHeader.querySelector('.arrow-down').classList.toggle('rotate');
+    });
+
+    loadingBar = new LoadingBar('loading_bar',true);
+    virtualScrollerCategories = new VirtualScroller(searchCategoryContainer,[],searchCategoryContainer.getBoundingClientRect().width-20,40,0,0,false);
+    virtualScrollerCategories.renderItemFunc = (parent,item,index) => {
+            parent.style.width = '100%';
+            const mainDiv = document.createElement('div');
+            mainDiv.classList.add('category-container');
+            mainDiv.onclick = () => {
+                if (settings.can_interact) {
+                    searchCategoryContainer.querySelectorAll('.selected').forEach((selected) => {
+                        selected.classList.remove('selected');
+                    })
+                    mainDiv.classList.add('selected')
+                    search_tag_category_details(item.category,true);
+                    
+                    last_clicked_category = item.category
+                }
+            }
+            mainDiv.innerText = `${item.category} (${item.total_count})`
+            mainDiv.title = `${item.category} (${item.total_count})`
+            return mainDiv;
+        }
+
+    virtualScrollerCategories.allowLoading = true;
+    
+    virtualScrollerCategories.postScrollFunc = () => {
+        
+        // console.log(virtualScroller.scrollPercentage);
+        // console.log(virtualScroller.scrollLeftUntilBottom);
+        //virtualScroller.currentScrollY+1000 >= virtualScroller.totalHeight
+        if (virtualScrollerCategories.scrollLeftUntilBottom <= 500 ) {
+            infiniteLoadCategories();
+        } else {
+        }
+        
+    }
+
+    function infiniteLoadCategories() {
+        if (virtualScrollerCategories.allowLoading && settings.can_interact && !settings.currently_loading) {
+            settings.currently_loading = true;
+            settings.currentCategoryPage+=1;
+            search_tag_categories();
+        }
+    }
+
+    function change_input_disabled(disabled) {
+        tag_info_elements.tag_basic_info_update_category_input.disabled = disabled;
+        tag_info_elements.tag_basic_info_update_detail_input.disabled = disabled;
+        if (disabled === true) {
+            tag_info_elements.update_tag_button.disabled = disabled;
+        }
+    }
+
+    
+    
+    function deleteTag() {
+        change_input_disabled(true)
+        let current_loaded_data_copy = {...current_loaded_data};
+        if (confirm(`Are you sure you wish to delete ${current_loaded_data_copy.category}:${current_loaded_data_copy.detail} (tag_ak:${current_loaded_data_copy.tag_auto_key})?`)) {
+            $.ajax({
+                    type: "DELETE",
+                    url: "{{url_for(blueprint_name+'.tag_view')}}",
+                    data:{TYPE:'REMOVE_TAG',CATEGORY:current_loaded_data_copy.category,DETAIL:current_loaded_data_copy.detail,
+                    TAG_AUTO_KEY:current_loaded_data_copy.tag_auto_key,CONFIRM_DELETE:'T'},
+                    beforeSend: function(request) {
+                        request.setRequestHeader("X-CSRFToken", csrf_token);
+                    },
+                    success: function(data) {  
+                        change_input_disabled(false)
+                        if (data == true) {
+                            alert(`${current_loaded_data_copy.category}:${current_loaded_data_copy.detail} has been deleted.`)
+                            if (current_loaded_data.tag_auto_key == current_loaded_data_copy.tag_auto_key) {
+                                searchPreviewContainer.innerHTML = '';
+                                tag_info_elements.tags_crossover_data.innerHTML = '';
+                                update_tag_info_elements(null,null,null);
+                                
+                            }
+                            let existingTag = document.querySelector(`.details-container[tag_auto_key="${current_loaded_data_copy.tag_auto_key}"]`);
+                            if (existingTag != undefined) {
+                                existingTag.innerText = `DELETED: ${current_loaded_data_copy.category}:${current_loaded_data_copy.detail}`
+                                existingTag.style.background = 'firebrick';
+                            }
+                        }
+                    },
+                    error:function(err){
+                        alert(err.responseText);
+                        change_input_disabled(false)
+                    },
+                    fail: function() {
+                        alert('Database Access Denied');
+                    }
+                })
+        }
+    }
+    function removeTagFromFiles() {
+        change_input_disabled(true)
+        let current_loaded_data_copy = {...current_loaded_data};
+        if (confirm(`Are you sure you wish to remove ${current_loaded_data_copy.category}:${current_loaded_data_copy.detail} (tag_ak:${current_loaded_data_copy.tag_auto_key}) from all images?`)) {
+            $.ajax({
+                    type: "DELETE",
+                    url: "{{url_for(blueprint_name+'.tag_view')}}",
+                    data:{TYPE:'CLEAR_TAG_FROM_IMAGES',CATEGORY:current_loaded_data_copy.category,DETAIL:current_loaded_data_copy.detail,
+                    TAG_AUTO_KEY:current_loaded_data_copy.tag_auto_key,CONFIRM_DELETE:'T'},
+                    beforeSend: function(request) {
+                        request.setRequestHeader("X-CSRFToken", csrf_token);
+                    },
+                    success: function(data) {  
+                        change_input_disabled(false)
+                        if (data == true) {
+                            alert(`${current_loaded_data_copy.category}:${current_loaded_data_copy.detail} has been removed from all images.`)
+                            update_tag_info_elements(null,null);
+                            //remove the tag from the list
+                            searchPreviewContainer.innerHTML = '';
+                            tag_info_elements.tags_crossover_data.innerHTML = '';
+                            let existingTag = document.querySelector(`.details-container[tag_auto_key="${current_loaded_data_copy.tag_auto_key}"]`);0
+                            if (existingTag != undefined) {
+                                existingTag.innerText = `Cleared: ${current_loaded_data_copy.category}:${current_loaded_data_copy.detail}`
+                            }
+                            tag_info_elements.delete_tag_button.disabled = false;
+                            
+                        }
+                    },
+                    error:function(err){
+                        alert(err.responseText);
+                        change_input_disabled(false)
+                    },
+                    fail: function() {
+                        alert('Database Access Denied');
+                    }
+                })
+        } else {
+            change_input_disabled(false);
+        }
+    }
+
+    function updateTagNotes() {
+        if (!tag_info_elements.tag_basic_info_update_notes_input.classList.contains('changed-value')) {
+            alert("Note must be different.")
+            return;
+        }
+        let current_loaded_data_copy = {...current_loaded_data};
+        $.ajax({
+                type: "PATCH",
+                url: "{{url_for(blueprint_name+'.tag_view')}}",
+                data:{NEW_NOTE:tag_info_elements.tag_basic_info_update_notes_input.value,
+                TAG_AUTO_KEY:current_loaded_data_copy.tag_auto_key,
+                ORIGINAL_TAG:`${current_loaded_data_copy.category}:${current_loaded_data_copy.detail}`,
+                TYPE:'NOTE_UPDATE'},
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success: function(data) {  
+                    change_input_disabled(false);
+                    tag_info_elements.tag_basic_info_update_notes_input.classList.remove('changed-value');
+                    tag_info_elements.tag_basic_info_update_notes_input.original_value = tag_info_elements.tag_basic_info_update_notes_input.value;
+                },
+                error:function(err){
+                    alert(err.responseText);
+                    change_input_disabled(false)
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+            })
+    }
+
+    function updateTagData() {
+        if (!tag_info_elements.tag_basic_info_update_category_input.classList.contains('changed-value') && !tag_info_elements.tag_basic_info_update_detail_input.classList.contains('changed-value')) {
+            alert("Category OR Details must be different.")
+            return;
+        }
+        let newCategory = tag_info_elements.tag_basic_info_update_category_input.value.toUpperCase();
+        let newDetail = tag_info_elements.tag_basic_info_update_detail_input.value.toUpperCase();
+        let current_loaded_data_copy = {...current_loaded_data};
+
+        change_input_disabled(true)
+        $.ajax({
+                type: "PATCH",
+                url: "{{url_for(blueprint_name+'.tag_view')}}",
+                data:{ORIGINAL_TAG:`${current_loaded_data_copy.category}:${current_loaded_data_copy.detail}`,
+                NEW_TAG:`${newCategory}:${newDetail}`,
+                TYPE:'TAG_UPDATE',
+                TAG_AUTO_KEY:current_loaded_data_copy.tag_auto_key},
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success: function(data) {  
+                    change_input_disabled(false)
+                    if (current_loaded_data.tag_auto_key == current_loaded_data_copy.tag_auto_key) {
+                        update_tag_info_elements(newCategory,newDetail,current_loaded_data.notes);
+                    }
+                    if (current_loaded_data_copy.category != newCategory) {
+                        //remove the tag from the list
+                        let existingTag = document.querySelector(`.details-container[tag_auto_key="${current_loaded_data_copy.tag_auto_key}"]`);
+                        if (existingTag != undefined) {
+                            existingTag.innerText = `${newCategory}:${newDetail}`
+                            // virtualScrollerDetails.removeItem(existingTag.parentElement.getAttribute('itemindex'));
+                        }
+                    }
+                    tag_info_elements.tag_basic_info_update_notes_input.disabled = true;
+                },
+                error:function(err){
+                    alert(err.responseText);
+                    change_input_disabled(false)
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+            })
+    }
+
+    
+
+    virtualScrollerCategories.getNumColumns = () => {return 1}
+    
+    virtualScrollerDetails = new VirtualScroller(searchSubCategoryContainer,[],searchSubCategoryContainer.getBoundingClientRect().width-20,40,0,0,false);
+    virtualScrollerDetails.allowLoading = true;
+    virtualScrollerDetails.renderItemFunc = (parent,item,index) => {
+            parent.style.width = '100%';
+            const mainDiv = document.createElement('div');
+            mainDiv.classList.add('details-container');
+            mainDiv.setAttribute('tag_auto_key',item.tag_auto_key);
+            mainDiv.onclick = () => {
+                if (settings.can_interact) {
+                    searchSubCategoryContainer.querySelectorAll('.selected').forEach((selected) => {
+                        selected.classList.remove('selected');
+                        
+                    })
+                    mainDiv.classList.add('selected')
+                    current_loaded_data.detail = item.detail;
+                    current_loaded_data.category = last_clicked_category;
+                    current_loaded_data.tag_auto_key = item.tag_auto_key;
+                    current_loaded_data.notes = item.notes;
+
+                    load_image_files(current_loaded_data.category,current_loaded_data.detail);
+
+                }
+                
+            }
+            mainDiv.innerText = `${item.detail} - (${item.total_count})`;
+            mainDiv.title = `${item.detail} - (${item.total_count})`;
+            return mainDiv;
+        }
+
+    
+    function infiniteLoadDetails(){
+        if (virtualScrollerDetails.allowLoading && settings.can_interact && !settings.currently_loading) {
+            settings.currentDetailPage+=1;
+            settings.currently_loading = true;
+            search_tag_category_details(last_clicked_category);
+        }
+    }
+
+    virtualScrollerDetails.postScrollFunc = () => {
+        if (virtualScrollerDetails.scrollLeftUntilBottom <= 500 ) {
+            infiniteLoadDetails();
+        }
+        
+    }
+    virtualScrollerDetails.getNumColumns = () => {return 1}
+    
+    [tag_info_elements.tag_basic_info_update_category_input,
+    tag_info_elements.tag_basic_info_update_detail_input,
+    tag_info_elements.tag_basic_info_update_notes_input].forEach((input) => {
+        input.onkeyup = () => {
+            if (input.original_value != null) {
+                if (event.key == 'Escape') {
+                    input.value = input.original_value;
+                    input.classList.remove('changed-value');
+                }
+                if (input.original_value != input.value) {
+                    input.classList.add('changed-value');
+                    
+                } else {
+                    input.classList.remove('changed-value');
+                }
+                set_tag_update_button_availability();
+            }
+        }
+    })
+
+
+    set_tag_update_button_availability = () => {
+        if (tag_info_elements.tag_basic_info_update_category_input.classList.contains('changed-value') ||
+        tag_info_elements.tag_basic_info_update_detail_input.classList.contains('changed-value')) {
+            tag_info_elements.update_tag_button.onclick = function () {updateTagData()};
+            tag_info_elements.update_tag_button.innerText = 'Update Tag'
+            tag_info_elements.update_tag_button.disabled = false;            
+        } else if (tag_info_elements.tag_basic_info_update_notes_input.classList.contains('changed-value')) {
+            tag_info_elements.update_tag_button.innerText = 'Update Notes'
+            tag_info_elements.update_tag_button.onclick = function () {updateTagNotes()};
+            tag_info_elements.update_tag_button.disabled = false;
+        } else {
+            tag_info_elements.update_tag_button.disabled = true;
+        }
+
+        
+    }
+
+
+    function setup_table_sort(table) {
+        function sortTable(table, column, isAscending) {
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+            const theaders = Array.from(thead.querySelectorAll('th'));
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            // Sort the rows based on the selected column
+            theaders.forEach((th) => {
+                th.dataset.order = null;
+            })
+            rows.sort((a, b) => {
+                let aValue = a.querySelector(`[data-column="${column}"]`).dataset.value;
+                let bValue = b.querySelector(`[data-column="${column}"]`).dataset.value;
+
+
+                if (!isNaN(parseFloat(aValue))) {
+                    aValue = parseFloat(aValue);
+                }
+                if (!isNaN(parseFloat(bValue))) {
+                    bValue = parseFloat(bValue);
+                }
+
+                if (isAscending) {
+                    if (aValue < bValue) {
+                        return -1
+                    } else {
+                        return 1;
+                    };
+                } else {
+                    if (aValue > bValue) {
+                        return -1
+                    }
+                    else { 
+                        return 1;
+                    }
+                }
+
+            });
+
+            // Remove existing rows from the table
+            rows.forEach(row => tbody.removeChild(row));
+
+            // Append the sorted rows to the table
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        const thArray = Array.from(table.querySelectorAll('th'));
+
+        thArray.forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.dataset.column;
+                const isAscending = th.dataset.order === 'asc';
+
+                // Your sorting logic goes here
+                sortTable(table, column, !isAscending);
+
+                // Toggle the sorting order
+                th.dataset.order = isAscending ? 'desc' : 'asc';
+            });
+        });
+    }
+    
+    class HelpMenu extends Modal {
+        constructor() {
+            super('Help-Menu')
+            // this.show();
+
+            this.container = this.content.appendChild(document.createElement('div'));
+            this.container.innerHTML = `
+            <div style="padding:10px;">
+                <h3>Tag Page - Help Menu</h3>
+                <h4><span style="font-size: 18pt;border-radius: 20px;background: rgba(255,0,0,0.3);font-weight: 800;padding-left: 10px;padding-right: 10px;margin: 2px;">!</span>
+                    Please be aware, This page can update many files at once and that can take a while depending on how many files have the selected tag.</h4>
+                <div class="indented-line">
+                    <ul>
+                        
+                    </ul>
+                    <h3>How to use</h3>
+                    <div>
+                        <ul>
+                            <li>Use the search bar at the top to look for specific tags. It's fairly basic and can only look up one thing at a time. For example, you can look up the category "hair color:" or anything with the word "red" in it.</li>
+                            <li>Additionally, you can choose to limit the Main Category down with the dropdown at the top labeled '[CATEGORY]'</li>
+                            <li>From there select a category on the left, and subsequently select the detail you wish to view on the right</li>
+                            <li>Clicking on the detail will show the following:</li>
+                                <li class="indented-line">Count per Main Category</li>
+                                <li class="indented-line">Count Per Directory Path</li>
+                                <li class="indented-line">Preview images for the tag as a whole</li>
+                            <li>From here you are able to edit the tag category and detail.</li>
+                            <li>When you're ready to make your changes, press the 'Update Tag' button and confirm.</li>
+                            <li>On the upper right two buttons are available:</li>
+                                <li class="indented-line">Remove Tag From Files</li>
+                                    <li class="double-indented-line">Removes the selected tag from all linked Files. Cannot be undone so be careful.</li>
+                                <li class="indented-line">Delete Tag</li>
+                                    <li class="double-indented-line">Removes the tag from the system if there are no linked files. (Requires the Remove Tag From Files to be done first). Cannot be undone so be careful.</li>
+
+                        </ul>
+                    <h3>Command</h3>
+                    <ul>
+                        <li>#orderby:</li>
+                        <li class="indented-line">Accepts 'count' or 'count_asc'</li>
+                        <li class="indented-line">order your results by either 'count' or 'count_asc' to order categories then details by how many tags there are, and how many tagged files there are respectively.</li>
+                        <li>#imdir:</li>
+                        <li class="indented-line">Accepts the IMDIR key that can be found on the File Loader page, ImageSorter page, and on this page.</li>
+                        <li class="indented-line">Loads up tags that only show up on the specified image directory (imdir).</li>
+                        <li>#tag_count:</li>
+                            <li class="indented-line">Accepts Comparators such as: '>', '>=', '<', '<=', and '=<'/li>
+                            <li class="indented-line">Also accepts a range such as 1-10</li>
+                            <li class="indented-line">Displays tags that have the requested count.</li>
+                        
+                    </ul>
+                    </div>
+                    
+                </div>
+            </div>
+            `
+            this.background.onclick = () => {
+                if (!this.content.contains(event.target)) {
+                    this.hide();
+                }
+            }
+        }
+    }
+
+    
+
+
+    let helpMenu = new HelpMenu();
+    search_tag_categories();
+
+</script>
+
+<style>
+    {% include 'styles_jinja/theme_css.html'%}
+    #mainContainer {
+        height:100vh;
+        width:100vw;
+    }
+
+    #searchContainer {
+        display:grid;
+        grid-template-areas: 
+        "searchinput searchinput ."
+        "searchcategorycontainer searchsubcategorycontainer tagstats"
+        "searchcategorycontainer searchsubcategorycontainer searchpreview";
+        height:100%;
+        width:100%;
+        grid-template-columns: .3fr .3fr 1fr;
+        grid-template-rows: 35px 1fr 1fr;
+    }
+
+    #searchInputContainer {
+        grid-area: searchinput;
+        display:flex;
+        gap:5px;
+        margin-left:5px;
+        
+    }
+
+    #searchCategoryContainer {
+        grid-area:searchcategorycontainer;
+        position:relative;
+        margin-left:10px;
+        overflow:auto;
+        background:rgba(0,0,0,0.1)
+    }
+
+    #searchSubCategoryContainer {
+        grid-area:searchsubcategorycontainer;
+        position:relative;
+        margin-left:10px;
+        overflow:auto;
+        background:rgba(0,0,0,0.3)
+    }
+
+    #tag_stats {
+        grid-area:tagstats;
+        background:rgba(0,0,0,0.1);
+        overflow: hidden;
+        height:100%;
+        display:grid;
+        grid-template-areas:
+        'tagName notes buttons' 
+        'info notes confirmButton'
+        'dirinfo dirinfo dirinfo';
+        grid-template-rows:30px 40px 1fr;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap:2px;
+        padding:5px
+    }
+
+    #tag_basic_info {
+        grid-area:tagName;
+    }
+
+    
+
+    #update_tag_button {
+        grid-area:confirmButton;
+    }
+
+    #tag_button_container {
+        grid-area:buttons;
+        text-align: right;
+        margin-right: 10px;
+        margin-top: 3px;
+    }
+
+    #notes_input_container {
+        grid-area:notes
+    }
+
+    #tag_basic_info_update_notes_input {
+        width:98%;
+        height:48px;
+        resize:none;
+    }
+
+    #tag_basic_info_update_input_container {
+        grid-area:info;
+        display:grid;
+        grid-template-columns:1fr 1fr;
+    }
+
+    #tags_crossover_data {
+        grid-area:dirinfo;
+        display:grid;
+        grid-template-areas:'a b';
+        overflow:hidden;
+        height:100%;
+    }
+
+
+    #searchPreviewContainer {
+        grid-area:searchpreview;
+        display: grid;
+        /* grid-template-rows: repeat(auto-fill,minmax(200px,1fr));
+        grid-template-columns: repeat(auto-fill,minmax(200px,1fr)); */
+        gap:5px;
+        position:relative;
+        overflow:hidden;
+    }
+    
+    #searchPreviewContainer > div{
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    #searchPreviewContainer > div > img {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%,-50%);
+        position:relative;
+        border-radius:20px;
+    }
+
+    #maincategory-container,#subcategory-container {
+        min-width:50px;
+        width:fit-content;
+        max-height:400px;
+        overflow-x:hidden;
+        overflow-y:auto;
+    }
+
+    #subcategory-container {
+        display:none;
+    }
+
+    .main-category,.sub-category {
+        cursor:pointer;
+        padding:10px;
+    }
+
+    .main-category.selected {
+        background:rgba(0, 0, 0, 0.25);
+    }
+
+    .dropdown-content > label {
+        padding:2px;
+        background:rgba(0, 0, 0, 0.1);
+    }
+
+    .dropdown-content label {
+        display: block;
+    }
+
+    .dropdown-content input[type="checkbox"] {
+        margin-right: 5px;
+    }
+
+    .checkbox-count {
+        margin-left: 5px;
+        padding-right:5px;
+    }
+
+    .dropdown-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px 10px;
+        border: 1px solid #ccc;
+        cursor: pointer;
+    }
+
+    .show {
+        display:block !important;
+    }
+
+    #category-container {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        display: none;
+        z-index: 1;
+        padding: 5px;
+        border: 1px solid #ccc;
+        color:var(--text-color);
+        user-select:none;
+        background-color: var(--bg-color);
+        /* overflow-y: scroll; */
+        max-height: 500px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    #category-container.show {
+        display:grid !important;
+        grid-template-columns:1fr 1fr;
+    }
+
+    #subCategoryDropdown {
+        position:relative;
+    }
+
+    .arrow-down {
+        border: solid black;
+        border-width: 0 3px 3px 0;
+        display: inline-block;
+        padding: 3px;
+        transform: rotate(45deg);
+    }
+
+    .rotate {
+        transform: rotate(-135deg);
+    }
+
+    .checkbox-count {
+        margin-left: 5px;
+        padding-right:5px;
+    }
+    #searchInputContainer {
+        display:flex;
+        flex-direction:row;
+        gap:10px;
+        align-items:center;
+        min-height:35px;
+        white-space:nowrap;
+        /* overflow-x:auto;
+        overflow-y:hidden; */
+        scrollbar-width:thin;
+    }
+
+    #searchInputContainer > .topbar-item {
+        padding-left:10px;
+        padding-right:10px;
+        padding-top:2px;
+        padding-bottom:2px;
+        background:rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+    }
+
+    .category-container, .details-container {
+        cursor:pointer;
+        height:40px;
+        overflow:hidden;
+    }
+
+    .category-container:hover,.details-container:hover {
+        background:rgba(0, 0, 0, 0.25);
+    }
+
+    .category-container.selected,.details-container.selected {
+        background:rgba(0, 0, 0, 0.5);
+    }
+
+    table {
+    border-collapse: separate;
+    border-spacing: 1px; 
+    }
+
+    table td {
+    border: 1px solid black;
+    padding: 10px;
+    }
+
+
+    table thead {
+        position:sticky;
+        top:0;
+        background:var(--bg-color);
+    }
+
+    /* table tr:first-child {
+        position:sticky;
+        top:0;
+        background:var(--bg-color);
+    } */
+
+    .all-directory-info-container, .grouped-directory-info-container {
+        overflow:auto;
+    }
+
+    .changed-value {
+        background:rgb(255, 225, 255);
+    }
+
+    #update_tag_button {
+        height:100%;
+        margin-left:5px;
+    }
+
+    th {
+        font-weight:normal;
+        text-decoration:underline;
+        user-select:none;
+        cursor:pointer;
+    }
+
+    th[data-order="asc"]::after {
+        content:"^";
+        padding-left:2px;
+    }
+    th[data-order="desc"]::after {
+        content:"v";
+        padding-left:2px;
+    }
+
+    #loading_bar {
+        overflow: hidden !important;
+    }
+    
+    #Help-Menu {
+        padding:10px;
+        background:var(--bg-color);
+        color:var(--text-color);
+        overflow:auto;
+        height:40vh;
+        min-height:400px;
+    }
+    
+    #Help-Menu div.indented-line {
+        margin-top:10px;
+        margin-bottom:20px;
+    }
+
+    #Help-Menu .indented-line {
+        margin-left:20px;
+    }
+
+    #Help-Menu .double-indented-line {
+        margin-left:40px;
+    }
+    
+    #Help-Menu p {
+        margin:0;
+    }
+
+</style>

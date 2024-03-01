@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Options - {{blueprint_name}}</title>
+    <script src="{{url_for(blueprint_name+'.load_required_file',filename='jquery.min.js')}}"></script>
+</head>
+<body>
+    <div style="margin:20px;">
+        <div>
+            <h2>Options</h2>
+        </div>
+        <div id="main_container">
+            <div style="margin:10px;">
+                <input type="checkbox" data-name="enable_api" id="API_Checkbox"><label for="API_Checkbox">Enable API</label>
+            </div>
+            <div style="margin:5px;">
+                <button onclick="save_changes()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+
+</body>
+
+<script>
+    {% include 'styles_jinja/theme_load.html'%}
+    const csrf_token = '{{csrf_token()}}';
+
+    let server_options = {{server_options|tojson}}
+
+    function save_changes() {
+        let inputs_to_update = [];
+        Array.from(document.querySelectorAll('#main_container input')).forEach((input) => {
+            if (input.type == 'checkbox') {
+                if (input.dataset.default_value != input.checked.toString()) {
+                    inputs_to_update.push([input.dataset.name,input.checked]);
+                } else {
+                    inputs_to_update.push([input.dataset.name,input.value]);
+                }
+            }
+        })
+        $.ajax({
+                type: "POST",
+                url: "{{url_for(blueprint_name+'.options_menu')}}",
+                contentType:'application/json',
+                data:JSON.stringify(inputs_to_update),
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success: function(data) {
+                    alert("SUCCESS");
+                    Array.from(document.querySelectorAll('#main_container input')).forEach((input) => {
+                        input.classList.remove('changed-value')
+                        if (input.type == 'checkbox') {
+                            input.parentElement.classList.remove('changed-value')
+                            input.dataset.default_value = input.checked;
+                        } else {
+                            input.dataset.default_value = input.value;
+                        }
+                    })
+                },
+                error:function(err){
+                    alert(err.responseText);
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+            })
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        Array.from(document.querySelectorAll('#main_container input')).forEach((input) => {
+            if (input.type == 'checkbox') {
+                input.checked = server_options[input.dataset.name]
+                input.dataset.default_value = server_options[input.dataset.name];
+
+                input.onchange = () => {
+                    if (input.dataset.default_value != input.checked.toString()) {
+                        input.classList.add('changed-value')
+                        input.parentNode.classList.add('changed-value')
+                    } else {
+                        input.classList.remove('changed-value')
+                        input.parentNode.classList.remove('changed-value')
+                    }
+                }
+                
+            }
+            
+        })
+        
+    })
+
+    
+
+</script>
+
+<style>
+    {% include 'styles_jinja/theme_css.html'%}
+
+    input.changed-value {
+        background:rgb(255, 225, 255);
+    }
+    .changed-value::before {
+        content:"*";
+        position:fixed;
+        left:15px;
+    }
+    
+
+</style>
+</html>

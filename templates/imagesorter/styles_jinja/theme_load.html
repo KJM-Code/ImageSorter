@@ -1,0 +1,8 @@
+const currentVisualTheme = localStorage.getItem('{{blueprint_name}}_{{current_username}}_visualTheme');
+<!-- console.log('{{blueprint_name}}_{{current_username}}_visualTheme') -->
+<!-- console.log('cVT',currentVisualTheme) -->
+if (['dark','light'].includes(currentVisualTheme)) {
+    document.documentElement.setAttribute('data-theme', currentVisualTheme);
+} else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+}

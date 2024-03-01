@@ -1,0 +1,7 @@
+/config.yaml
+/static/imagesorter/thumbnails/
+/static/imagesorter/pending_delete/
+/static/imagesorter/pending_removal/
+/static/imagesorter/pending_removal_duplicates/
+/static/imagesorter/user_info/
+/server_options.json

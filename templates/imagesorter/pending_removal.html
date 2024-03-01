@@ -1,0 +1,971 @@
+<html>
+    <head>
+        <script src="{{url_for(blueprint_name+'.load_required_file',filename='jquery.min.js')}}"></script>
+        <title>Pending Delete</title>
+        
+    </head>
+    <body>
+        
+        <div id="mainContainer">
+            <div id="no-files-overlay">
+                <div>
+                    No files currently pending removal.
+                </div>
+            </div>
+            <div id="topbar">
+                <button class="del_button" onclick="deleteFiles()">Remove Selected</button>
+                <button class="help_button" onclick="helpMenu.show()">Help</button>
+            </div>
+            <div style="width:100%;height:100%;overflow-x:hidden;overflow-y:auto;position:relative;">
+                <div id="imageContainer">
+
+                </div>
+            </div>
+        </div>
+
+    </body>
+</html>
+<script>
+    {% include 'styles_jinja/theme_load.html'%}
+
+    var files = {{DATA|tojson}};
+    const currentSize = 'small';
+    const csrf_token = '{{csrf_token()}}'
+    const imageSizes = {small:200,medium:400,large:800};
+    let selectionInformation = {
+        selectedImagesIndex:[],
+        lastSelected:-1
+    }
+
+    if (files.length > 0) {
+            document.getElementById('no-files-overlay').style.display = 'none';
+        }
+
+
+
+
+
+    function deleteFiles() {
+    
+        var SELECTED = document.getElementsByClassName('SELECTED');
+        var files = []
+
+        selectionInformation.selectedImagesIndex.forEach((selected) => {
+            files.push(virtualScroller.items[selected][1])
+        })
+        //console.log(files);
+        loadingBar.show('Removing Images','remove_files',10)
+        $.ajax({
+                type: "DELETE",
+                url: "{{url_for(blueprint_name+'.pending_removal')}}",
+                data:{"files":files.join('|')},
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success: function(data) {
+                    window.location.reload();
+                    loadingBar.hide();
+                },
+                error:function(err){
+                    alert(err.responseText);
+                    loadingBar.hide();
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+            })
+}
+
+
+
+function getImageURL(filename,size=undefined,frame=undefined,custom_size=1000) {
+        let Dict = {};
+        if (size) {
+            Dict['size'] = size;
+            if (size === 'custom') {
+                Dict['custom_size'] = custom_size;
+            }
+        }
+        if (frame) {
+            Dict['frame'] = frame
+        }
+        
+        if (Object.keys(Dict).length > 0) {
+            let dataString = Object.keys(Dict).map(function(key){ return key+"="+Dict[key] }).join("&")
+            return "{{url_for(blueprint_name+'.load_image_file_base')}}"+filename+'?'+dataString
+        } else {
+            return "{{url_for(blueprint_name+'.load_image_file_base')}}"+filename+'?size='+currentSize;
+        }
+        
+    }
+
+    class Modal {
+        constructor(contentID,createBackground=true) {
+
+            this.hidden = true;
+
+            // Create the content div
+            this.content = document.createElement('div');
+            this.content.style.position = 'fixed';
+            this.content.style.top = '50%';
+            this.content.style.left = '50%';
+            this.content.style.transform = 'translate(-50%, -50%)';
+            // this.content.style.backgroundColor = 'white';
+            this.content.style.zIndex = '10000';
+            this.content.style.borderRadius = '20px';
+            this.content.style.overflow = 'auto';
+            this.content.id = contentID;
+
+            if (createBackground) {
+                // Create the background div
+                this.background = document.createElement('div');
+                this.background.style.position = 'fixed';
+                this.background.style.top = '0';
+                this.background.style.left = '0';
+                this.background.style.width = '100%';
+                this.background.style.height = '100%';
+                this.background.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                this.background.style.zIndex = '9999';
+                this.background.style.display = 'none';
+                
+
+                
+                
+
+                // Add the content div to the background div
+                this.background.appendChild(this.content);
+
+                // Add the background div to the body element
+                document.body.appendChild(this.background);
+
+            }
+            
+        }
+
+        // Method to set the size of the content div
+        setSize(width, height) {
+            this.content.style.width = `${width}px`;
+            this.content.style.height = `${height}px`;
+        }
+
+        setHTML(innerHTML) {
+            this.content.innerHTML = innerHTML;
+        }
+
+        updateItem() {
+            console.log("Modify this method to update the needed information");
+        }
+
+        // Method to show the modal
+        show() {
+            this.hidden = false;
+            this.background.style.display = 'block';
+        }
+
+        // Method to hide the modal
+        hide() {
+            this.hidden = true;
+            this.background.style.display = 'none';
+        }
+    }
+
+    class HelpMenu extends Modal {
+        constructor() {
+            super('Help-Menu')
+            // this.show();
+
+            this.container = this.content.appendChild(document.createElement('div'));
+            this.container.innerHTML = `
+            <h3>Pending Removal - Help Menu</h3>
+            <h4><span style="font-size: 18pt;border-radius: 20px;background: rgba(255,0,0,0.3);font-weight: 800;padding-left: 10px;padding-right: 10px;margin: 2px;">!</span>
+                Please be aware, This page <u><i>will</i></u> relocate files on your system if they are selected and confirmed.</h4>
+            <div class="indented-line">
+                <ul>
+                    <li>Files that have been tagged with <span class="tag-item">"GENERAL:DELETE"</span> will show up here to be removed from the system.</li>
+                    <li>Upon removal, the selected file(s) are not deleted, but relocated to a folder within the static folder of your ImageSorter module, or as specified in the config under "pending_removal_folder" parameter.</li>
+                    <li>Removed files keep a copy of their linked information in a text file within the specified duplicates removal folder.</li>
+                </ul>
+                <h3>How to use</h3>
+                <div>
+                    <ul>
+                        <li>Select images by clicking on them, using the same system as the main page.</li>
+                        <li>Hold SHIFT and click to select multiple, or hold CTRL and SHIFT to select all between the last selected and the currently selected.</li>
+                        <li>Press the "Remove Selected" button to submit the files for removal.</li>
+                    </ul>
+                </div>
+            </div>
+            `
+            this.background.onclick = () => {
+                if (!this.content.contains(event.target)) {
+                    this.hide();
+                }
+            }
+        }
+    }
+
+
+class VirtualScroller {
+        constructor(container, items, itemWidth, itemHeight, verticalPadding = 0,horizontalPadding = 0,even_horizontal_spread = true,) {
+            this.container = container;
+            this.items = items;
+            this.itemWidth = itemWidth;
+            this.itemHeight = itemHeight;
+            this.even_horizontal_spread = even_horizontal_spread;
+            this.horizontalPadding = horizontalPadding;
+            this.containerVerticalOffset = 10
+            this.scrollLeftUntilBottom = 0;
+            this.currentScrollY = 0;
+            this.scrollPercentage = 0;
+            this.containerHeight = 0
+
+            this.renderItemFunc = (parent,item,index) => {
+                const mainDiv = document.createElement('div');
+                mainDiv.classList.add('image-container');
+
+                const tempImage = document.createElement('img')
+                tempImage.src = getImageURL(item.FILE_NAME);
+                mainDiv.appendChild(tempImage);
+
+                return mainDiv;
+            }
+
+            this.postScrollFunc = () => {
+
+            }
+            
+            
+            this.verticalPadding = verticalPadding;
+            this.renderedItems = {};
+            this.totalHeight = this.getNumRows() * this.itemHeight;
+            this.container.innerHTML = `<div style="height: ${this.totalHeight}px;"></div>`;
+            this.scroller = this.container.querySelector('div');
+            this.container.addEventListener('scroll', this.render.bind(this));
+            this.resize();
+            
+            
+            window.addEventListener('resize', this.resize.bind(this));
+            this.render();
+        }
+
+        getNumColumns() {
+            return Math.floor(this.container.clientWidth / (this.itemWidth+(this.horizontalPadding*2)));
+        }
+
+
+        getNumRows() {
+            const numCols = this.getNumColumns();
+            const numRows = Math.ceil(this.items.length / numCols);
+            return numRows;
+        }
+
+
+        resize() {
+        const numRows = this.getNumRows();
+        const containerHeight = numRows * this.itemHeight;
+        this.scroller.style.height = `${containerHeight}px`;
+        this.totalHeight = containerHeight;
+        this.resetRender();
+        }
+
+        getItemPosition(index) {
+            let currRow = Math.floor(index/this.getNumColumns());
+            let currCol = Math.floor(index % this.getNumColumns());
+
+            let top = this.containerVerticalOffset+(currRow * this.itemHeight+(currRow*(this.verticalPadding*2)));
+            let left = (currCol * this.itemWidth+(currCol*this.horizontalPadding))
+
+            return {top:top,
+                    left:left
+                    }
+        }
+
+        scrollToIndex(index,behavior='smooth') {
+            let positionData = this.getItemPosition(index)
+            let containerHeight_half = (this.container.clientHeight / 2)
+            let currentScrollPosition_Center = this.container.scrollTop
+            
+            if (containerHeight_half < this.itemHeight) {
+                    containerHeight_half = 0;
+                }
+
+
+            if (this.itemHeight > containerHeight_half) {
+                this.container.scrollTo({top:positionData.top+containerHeight_half-(this.verticalPadding),behavior:'smooth'});
+            }
+            else if (currentScrollPosition_Center <= positionData.top-containerHeight_half) {
+                //lower half
+                this.container.scrollTo({top:positionData.top-containerHeight_half-(this.verticalPadding),behavior:'smooth'});
+            } else {
+                //upper half
+                this.container.scrollTo({top:positionData.top-containerHeight_half+(this.itemHeight+(this.verticalPadding)),behavior:'smooth'});   
+            }
+        }
+
+        render() {
+            const scrollTop = this.container.scrollTop;
+            const scrollBottom = scrollTop + this.container.clientHeight;
+            let startRow = Math.floor(scrollTop / (this.itemHeight+(this.verticalPadding*2)));
+            startRow-=2
+            if (startRow < 0) {
+                startRow = 0;
+            }
+            let endRow = Math.ceil(scrollBottom / this.itemHeight);
+            endRow+=2;
+            
+            const startCol = 0;
+            const endCol = this.getNumColumns();
+            const fragment = document.createDocumentFragment();
+            
+            
+            
+            let indexRange = []
+            let addedItems = 0;
+            for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+                for (let colIndex = startCol; colIndex < endCol; colIndex++) {
+                    const index = rowIndex * endCol + colIndex;
+                    indexRange.push(index);
+                    if (index >= this.items.length) {
+                        continue;
+                    }                        
+                    else if (!this.renderedItems[index]) {
+                        const item = document.createElement('div');
+                        item.style.width = `${this.itemWidth}px`;
+                        item.style.height = `${this.itemHeight}px`;
+                        item.style.position = 'absolute';
+                        item.style.top = `${this.containerVerticalOffset+(rowIndex * this.itemHeight+(rowIndex*(this.verticalPadding*2)))}px`;
+                        
+                        if (this.even_horizontal_spread) {
+                            let gap = (this.container.clientWidth - (this.itemWidth*endCol))
+                            item.style.left = `${((colIndex * this.itemWidth) + ((gap/(endCol+1))*(colIndex+1))) }px`;
+                            
+                        } else {
+                            item.style.left = `${(colIndex * this.itemWidth+(colIndex*this.horizontalPadding))}px`;
+                        }
+                        
+                        item.setAttribute('imageIndex',index);
+                        let innerDiv = this.renderItemFunc(item,this.items[index],index);
+                        item.appendChild(innerDiv);
+                        
+                        fragment.appendChild(item);
+                        this.renderedItems[index] = item;
+                        addedItems+=1
+                    } 
+                    }
+            }
+
+            let renderedItemIndexes = Object.keys(this.renderedItems);
+            renderedItemIndexes = renderedItemIndexes.map(str => Number(str));
+            //get list of items that are no longer rendered
+            if (renderedItemIndexes.length > 0) {
+                let removedIndexes = renderedItemIndexes.filter(item => !indexRange.includes(item))
+                Array.from(removedIndexes).forEach((removed_index) => {
+                    let removedItem = this.scroller.querySelector(`[imageIndex="${removed_index}"]`)
+                    if (removedItem != undefined) {
+                        removedItem.querySelector('img').src = '';
+                        removedItem.parentNode.removeChild(removedItem);
+                    }
+                    delete this.renderedItems[removed_index];
+                })
+            }
+            
+
+            // this.scroller.innerHTML = '';
+            this.scroller.appendChild(fragment);
+
+            this.scrollLeftUntilBottom = this.container.scrollHeight - (this.container.scrollTop+this.container.clientHeight);
+            this.currentScrollY = this.container.scrollHeight - (this.container.scrollTop+this.container.clientHeight);
+            this.scrollPercentage = (this.container.scrollTop/(this.container.scrollHeight - this.container.clientHeight)) ;
+
+            this.postScrollFunc()
+
+            }
+
+
+        clearItems() {
+            this.container.scrollTo({top:0});
+            this.items = [];
+            this.totalHeight = 0;
+            this.resetRender();
+        }
+
+        resetRender() {
+            this.renderedItems = [];
+            this.scroller.innerHTML = '';
+            this.render();
+        }
+        updateItemSize(itemWidth, itemHeight) {
+            this.itemWidth = itemWidth;
+            this.itemHeight = itemHeight;
+            this.totalHeight = Math.ceil(this.items.length / this.getNumColumns()) * (this.itemHeight + (this.verticalPadding*2));
+            this.container.querySelector('div').style.height = `${this.totalHeight}px`;
+            this.resetRender();
+            
+        }
+
+        addItems(newItems) {
+            this.items.push(...newItems);
+            this.totalHeight = Math.ceil(this.items.length / this.getNumColumns()) * (this.itemHeight + this.verticalPadding*2);
+            this.container.querySelector('div').style.height = `${this.totalHeight}px`;
+            this.render();
+        }
+
+        removeItem(index) {
+            this.items.splice(index,1);
+            this.totalHeight = Math.ceil(this.items.length / this.getNumColumns()) * (this.itemHeight + this.verticalPadding);
+            this.container.querySelector('div').style.height = `${this.totalHeight}px`;
+            this.resetRender();
+        }
+        
+    }
+
+
+    addSelected_Func = (index) =>{ 
+            // console.log('Add:',index)
+            virtualScroller.items[index].selected = true;
+            if (virtualScroller.renderedItems[index]) {
+                try{
+                    virtualScroller.renderedItems[index].querySelector('.image-container').classList.add('selected');
+                    virtualScroller.renderedItems[index].querySelector('.image-container').classList.add('animated');
+                }
+                catch{}
+            }
+            if (selectionInformation.selectedImagesIndex.indexOf(index) == -1) {
+                selectionInformation.selectedImagesIndex.push(index);
+                
+            }
+
+
+
+
+
+        }
+    removeSelected_Func = (index) => {
+            // console.log('Remove:',index)
+            virtualScroller.items[index].selected = false;
+            if (virtualScroller.renderedItems[index]) {        
+                try{
+                    virtualScroller.renderedItems[index].querySelector('.image-container.selected').classList.remove('selected')
+                }
+                catch{}
+            }
+            if (selectionInformation.selectedImagesIndex.indexOf(index) != -1) {
+                selectionInformation.selectedImagesIndex.splice(selectionInformation.selectedImagesIndex.indexOf(index),1);
+            }
+            
+        }
+
+
+
+    virtualScrollSelectOne = (index) => {
+        
+            
+            Array.from(selectionInformation.selectedImagesIndex).forEach((selectedIndex) => {    
+                removeSelected_Func(selectedIndex);
+                if (selectedIndex != index) {
+                }
+            })
+            if (selectionInformation.selectedImagesIndex.indexOf(index) == -1) {
+                virtualScroller.items[index].selected = true;
+                if (virtualScroller.renderedItems[index]) {
+                    virtualScroller.renderedItems[index].querySelector('.image-container').classList.add('selected')
+                    virtualScroller.renderedItems[index].querySelector('.image-container').classList.add('animated')
+                }
+                
+            } else {
+                // return;
+            }
+            
+            addSelected_Func(index);
+
+            
+            
+        } 
+
+        virtualScrollMultiSelect = (index) => {
+
+        }
+
+        virtualScroll_SetLastSelected = (index) => {
+            if (selectionInformation.lastSelected != -1) {
+                if (virtualScroller.renderedItems[selectionInformation.lastSelected]) {
+                    try{
+                        virtualScroller.renderedItems[selectionInformation.lastSelected].querySelector('.image-container').classList.remove('last-selected');
+                    }
+                    catch{}      
+                }
+            }
+            selectionInformation.lastSelected = index;
+            if (virtualScroller.renderedItems[selectionInformation.lastSelected]) {
+                    try{
+                        virtualScroller.renderedItems[selectionInformation.lastSelected].querySelector('.image-container').classList.add('last-selected');
+                    }
+                    catch{}      
+            }
+        }
+
+
+
+    
+    class LoadingBar extends Modal {
+        constructor(createBackground=true) {
+            super('loading_bar',createBackground);
+            this.content.style.width = '250px';
+            this.content.style.height = '160px';
+            this.loadingAjax = undefined;
+            this.loadingInterval = undefined;
+            this.loadingTimeout = undefined;
+            this.identifier = undefined;
+            this.lastUpdateObject = undefined;
+            this.stuckLimit = 20;
+            this.stuckCounter = 0;
+            this.container = this.content.appendChild(document.createElement('div'));
+            this.container.style.background = 'rgba(50,50,50,1)'
+            this.container.style.padding = '10px';
+            this.container.style.height='100%';
+            this.container.style.color = 'white';
+            this.container.classList.add("text-shadow-outline");
+            // this.container.style.width = '100%';
+
+
+            this.titleBar = this.container.appendChild(document.createElement('div'));
+            this.titleBar.style.marginBottom = '10px';
+            this.progressBar = this.container.appendChild(document.createElement('div'));
+            this.progressBar.style.border = '1px solid var(--text-color)';
+            this.progressBar.style.outline = '1px solid var(--bg-color)';
+            this.progressBar.style.width = '100%';
+            this.progressBar.style.height = '30px';
+            this.progressBar.style.margin = 'auto';
+            this.progressBar.style.position = 'relative';
+            this.progressBar.style.borderRadius = '10px';
+            this.progressBar.style.overflow = 'hidden';
+
+            this.progressFiller = this.progressBar.appendChild(document.createElement('div'))
+            this.progressFiller.style.position = 'absolute';
+            this.progressFiller.style.top = '0px';
+            this.progressFiller.style.left = '0px';
+            this.progressFiller.style.width = '0px';
+            this.progressFiller.style.height = '30px';
+            this.progressFiller.style.background = 'green';
+
+            this.progressText = this.progressBar.appendChild(document.createElement('div'));
+            this.progressText.style.position = 'absolute';
+            this.progressText.style.top = '50%';
+            this.progressText.style.left = '50%';
+            this.progressText.style.translate = '-50% -50%';
+
+            this.continuedProgressContainer = this.container.appendChild(document.createElement('div'));
+            this.continuedProgressInfo = this.continuedProgressContainer.appendChild(document.createElement('span'));
+            this.continuedProgressInfo.innerText = 'Progress: ';
+            this.continuedProgress = this.continuedProgressContainer.appendChild(document.createElement('span'));
+
+            this.elapsedDurationContainer = this.container.appendChild(document.createElement('div'));
+            this.elapsedDurationInfo = this.elapsedDurationContainer.appendChild(document.createElement('span'));
+            this.elapsedDurationInfo.innerText = 'Elapsed: ';
+            this.elapsedDuration = this.elapsedDurationContainer.appendChild(document.createElement('span'));
+
+            this.timeRemainingContainer = this.container.appendChild(document.createElement('div'));
+            this.timeRemainingInfo = this.timeRemainingContainer.appendChild(document.createElement('span'));
+            this.timeRemainingInfo.innerText = 'Time Remaining: ';
+            this.timeRemaining = this.timeRemainingContainer.appendChild(document.createElement('span'));
+
+            this.cancelContainer = this.container.appendChild(document.createElement('div'));
+            this.cancelButton = this.cancelContainer.appendChild(document.createElement('Button'));
+            this.cancelButton.innerText = 'Cancel Request';
+            this.cancelButton.onclick = () => {
+                this.cancelOperation();
+            }
+
+
+            
+            
+            
+            
+
+
+        }
+
+        setTitle(title) {
+            this.titleBar.innerText = title;
+        }
+
+        setIdentifier(identifier) {
+            this.identifier = identifier;
+            this.abortLoading();
+        }
+
+        abortLoading() {
+            this.stuckCounter = 0;
+            try{clearInterval(this.loadingInterval)}
+            catch{};
+            try{this.loadingAjax.abort()}
+            catch{};
+            try{clearTimeout(this.loadingTimeout)}
+            catch{};
+        }
+
+
+        loadStatus(identifier) {
+            let thisReference = this;
+            this.loadingAjax = $.ajax({
+                type:'GET',
+                url:"{{url_for(blueprint_name+'.get_loading_status_base')}}"+`${identifier}/`,
+                success:function(data){
+                    thisReference.updateElements(data);
+                }
+            })
+        }
+
+        cancelOperation() {
+            let thisReference = this;
+            if (this.identifier == undefined) {
+                return;
+            }
+            this.loadingAjax = $.ajax({
+                type:'POST',
+                url:"{{url_for(blueprint_name+'.cancel_loading_operation_base')}}"+`${this.identifier}/`,
+                beforeSend: function(request) {
+                    request.setRequestHeader("X-CSRFToken", csrf_token);
+                },
+                success:function(data){
+                    if (data == true) {
+                        thisReference.hide();
+                    }
+                }
+            })
+        }
+
+        updateElements(updateData) {
+            // console.log(updateData);
+            if (Object.keys(updateData).includes('progress_data')) {
+
+                if (JSON.stringify(this.lastUpdateObject) === JSON.stringify(updateData)) {
+                    this.stuckCounter+=1;
+                    if (this.stuckCounter >= this.stuckLimit) {
+                        this.hide();
+                    }
+                }
+
+                if (updateData.progress_data.percentage_complete == 1) {
+                    this.hide();
+                }
+
+                document.title = `ImageSorter - ${parseInt(updateData.progress_data.percentage_complete*10000)/100}% - ${this.identifier}`;
+                this.continuedProgress.innerText = `${updateData.progress_data.n}/${updateData.progress_data.total}`
+                this.progressFiller.style.width = `${parseInt(updateData.progress_data.percentage_complete*10000)/100}%`
+                this.progressText.innerText = `${parseInt(updateData.progress_data.percentage_complete*10000)/100}%`
+                this.timeRemaining.innerText = `${updateData.progress_data.remaining_time}`
+                this.elapsedDuration.innerText = `${updateData.progress_data.elapsed}`
+            }
+
+
+            // try{
+                
+            // } catch{}
+            this.lastUpdateObject = updateData;
+        }
+
+        clearElements() {
+
+        }
+
+        initiateLoadingLoop(intervalSpeed=1000) {
+            this.abortLoading();
+            this.loadStatus(this.identifier);
+            this.loadingInterval = setInterval(() => {
+                this.loadStatus(this.identifier);
+            }, intervalSpeed);
+        }
+
+        show(title,identifier,delay=0) {
+            this.abortLoading();
+            this.loadingTimeout = setTimeout(() => {
+                super.show();
+                this.setTitle(title);
+                this.setIdentifier(identifier);
+                this.initiateLoadingLoop();
+            }, delay);
+        }
+
+        show_quiet(title,identifier) {
+            super.show();
+            this.setTitle(title);
+            this.setIdentifier(identifier);
+        }
+
+        hide() {
+            super.hide();
+            this.abortLoading();
+            this.clearElements();
+            document.title = 'ImageSorter';
+        }
+
+
+    }
+
+    loadingBar = new LoadingBar('loading_bar');
+    virtualScroller = new VirtualScroller(document.getElementById('imageContainer'),[],imageSizes['small'], imageSizes['small'],10,10);
+    virtualScroller.renderItemFunc = (parent,item,index) => {
+
+
+        const mainDiv = document.createElement('div');
+        mainDiv.classList.add('image-container');
+        
+        const tempImage = document.createElement('img')
+        tempImage.classList.add('transparent-background')
+        tempImage.src = getImageURL(item[0]);
+        mainDiv.appendChild(tempImage);
+
+        // const tagCount = document.createElement('div')
+        // tagCount.innerText = item.TAG_COUNT;
+        // tagCount.classList.add('tag-count')
+        // mainDiv.appendChild(tagCount);
+
+        if (item.selected || false) {
+            if (selectionInformation.lastSelected == index) {
+                            mainDiv.classList.add('last-selected');
+                        }
+            mainDiv.classList.add('selected');
+        }
+
+        // if (item.ANIMATED) {
+        //     mainDiv.classList.add('animated-image');
+            
+        //     tempImage.style.objectFit = 'contain';
+        //     mainDiv.onmouseenter = () => {
+        //         tempImage.style.height = tempImage.height+'px'
+        //         tempImage.style.width = tempImage.width+'px'
+        //         tempImage.src = getImageURL(item[0])
+                
+        //     }
+        //     mainDiv.onmouseleave = () => {
+        //         tempImage.src = getImageURL(item[0])
+        //     }
+        // }
+
+
+        parent.onclick = function() {
+            
+            if (event.shiftKey) {
+                if (event.ctrlKey) {
+                    //select/toggle all inbetween. If the item in question is already selected, de-select all from the lastselected to this one.
+                    // console.log(index,selectionInformation.lastSelected)
+
+                    let end = index
+                    let start = -1;
+                    if (selectionInformation.lastSelected != -1){
+                        start = selectionInformation.lastSelected;
+                    } else {
+                        start = index;
+                    }
+
+                    min = Math.min(start,end);
+                    max = Math.max(start,end);
+                    increment = 1;//var increment = start <= end ? 1 : -1;
+                    originalSelectedValue = item.selected||false
+                    // console.log(min,max,increment);
+                    
+                    for (var i = min; i <= max; i += increment) {
+                        if (originalSelectedValue||false == true) {
+                            removeSelected_Func(i);
+                        } else {
+                            addSelected_Func(i);
+                        }       
+                    }
+                    virtualScroll_SetLastSelected(index);
+                }
+                
+                
+                else {
+                    //Toggle Select
+                    if (selectionInformation.selectedImagesIndex.indexOf(index) == -1) {
+                        addSelected_Func(index);
+                    } else {
+                        removeSelected_Func(index);
+                    }
+                    virtualScroll_SetLastSelected(index);
+                }
+                
+
+            } else {
+                //Select only one
+                // console.log(selectionInformation.selectedImagesIndex.length)
+                virtualScrollSelectOne(index);
+                virtualScroll_SetLastSelected(index);
+                
+            }
+        }
+
+        return mainDiv;
+        }
+    virtualScroller.addItems(files);
+
+
+
+
+
+
+let helpMenu = new HelpMenu();
+
+
+</script>
+<style>
+    {% include 'styles_jinja/theme_css.html'%}
+    
+    #mainContainer {
+        overflow:hidden;
+        width:100vw;
+        height:100vh;
+    }
+
+
+    /* .SELECTED {
+        border:10px solid black;
+        outline:5px solid white;
+    } */
+
+    .SELECTED::before {
+        content:'▾';
+        color:black;
+        position:absolute;
+        top:10px;
+        right:10px;
+        scale:2;
+        color:white;
+        text-shadow:
+		-1px -1px 0 black,
+		1px -1px 0 black,
+		-1px 1px 0 black,
+		1px 1px 0 black;
+        z-index: 1;
+    }
+
+    button {
+        z-index:9999;
+    }
+    .del_button {
+        /* position: fixed;
+        top: 0px;
+        left: 0px; */
+    }
+    .select_all{
+        position: fixed;
+        top: 0px;
+        right: 100px;
+    }
+    .select_none{
+        position: fixed;
+        top: 0px;
+        right: 0px;
+
+    }
+    .select_after{
+        position: fixed;
+        top: 0px;
+        right: 300px;
+
+    }
+
+    #imageContainer {
+        height:100vh;
+        width:100vw;
+        user-select:none;
+        overflow:hidden;
+    }
+
+    .image-container, .selected-image-container {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        overflow:hidden;
+        min-height:50px;
+        
+        
+    }
+
+    .image-container > img {
+        border-radius:20px;
+    }
+
+    .image-container.selected {
+        border:10px solid black;
+        outline:5px solid white;
+        border-radius:20px;   
+    }
+
+    .image-container.selected.animated > img {
+        animation-name: size-pulse;
+        animation-duration: 0.25s;
+        animation-fill-mode: forwards;
+    }
+
+    @keyframes size-pulse {
+        0% {
+            scale:1;
+        }
+        50% {
+            scale:0.98;
+        }
+        
+        100% {
+            scale:1.0;
+        }
+    }
+    
+    #no-files-overlay {
+        width:100vw;
+        height:100vh;
+        position:absolute;
+    }
+
+    #no-files-overlay > div {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        font-size:32pt;
+    }
+    
+    #Help-Menu {
+        padding:10px;
+        background:var(--bg-color);
+        color:var(--text-color);
+        overflow:auto;
+        height:40vh;
+        min-height:400px;
+    }
+    
+    #Help-Menu div.indented-line {
+        margin-top:10px;
+        margin-bottom:20px;
+    }
+
+    #Help-Menu .indented-line {
+        margin-left:20px;
+    }
+    
+    #Help-Menu p {
+        margin:0;
+    }
+
+    #topbar {
+        display:flex;
+        position:absolute;
+        top:0px;
+        left:0px;
+        gap:5px;
+    }
+
+    .tag-item {
+        color:#b3dbff;
+        background:rgba(0,0,0,0.5);
+        padding:2px;
+        border-radius:5px;
+        font-size:12pt;
+    }
+
+    #loading_bar {
+        overflow: hidden !important;
+    }
+
+</style>

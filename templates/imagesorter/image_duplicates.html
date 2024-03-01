@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IS - Duplicate Files</title>
+    <script src="{{url_for(blueprint_name+'.load_required_file',filename='jquery.min.js')}}"></script>
+</head>
+<body  onmouseup="select_RadialMenuOption()" data-theme="dark">
+    <div id="no-files-overlay">
+        <div>
+            No files with duplicate names found.
+        </div>
+    </div>
+    <div id="radialMenu" class="textShadow">
+        <div id="radialMenu_option1" class="rename_image radialMenu_option" value="rename_image" onmouseenter="hoverRadialMenu(this)">
+            <div class="radialMenu_innerText">Rename</div>
+        </div>
+        <!-- <div id="radialMenu_option2" class=" radialMenu_option" value="merge_image" onmouseenter="hoverRadialMenu(this)">
+            <div class="radialMenu_innerText">[Disabled]</div>
+        </div> -->
+        <div id="radialMenu_option2" class="delete_image radialMenu_option" value="delete_image" onmouseenter="hoverRadialMenu(this)">
+            <div class="radialMenu_innerText">Remove</div>
+        </div>
+        <div id="radialMenu_option3" class="parent_image radialMenu_option" value="parent_image" onmouseenter="hoverRadialMenu(this)">
+            <div class="radialMenu_innerText">Parent</div>
+        </div>
+    </div>
+    <div id="compareContainer"> <!--Used to view comparison images between the parent and child-->
+        <div id="mainCompare" class="fitscreen">
+            <img id="mainCompareImg" class="small">
+        </div>
+        <div id="childCompare" class="fitscreen">
+            <img id="secondCompareImg" class="small" style="display:none">
+        </div>
+    </div>
+
+    <div id="mainContainer">
+        <div id="imageStatsContainer">
+        </div>
+        <div id="imagesContainer">
+        </div>
+    </div>
+
+</body>
+</html>
+
+<script>
+    let totalDuplicates = {{totalDupes}};
+    let imagesLoading = false;
+    let dupeFiles = {{duplicates|tojson}};
+    const csrf_token = "{{csrf_token()}}"
+    var currImageSelected;
+    var currRadialOption;
+    var isRadialMenuActive = false;
+    
+    {%if duplicates|length > 0 %}
+        const file_types = 'Duplicates';
+    {%else%}
+        const file_types = null;
+    {%endif%}
+
+
+    const mainContainer = document.getElementById('mainContainer')
+
+    const imagesContainer = document.getElementById('imagesContainer');
+    const imageStatsContainer = document.getElementById('imageStatsContainer');
+
+
+    const baseImageURL = "{{url_for(blueprint_name+'.load_image_file_base')}}" //not a dupe. Requires filename
+    const baseDupeImageURL = "{{url_for(blueprint_name+'.load_duplicate_image_base')}}"
+    var imagesToLoad = []
+
+
+    class Modal {
+        constructor(contentID,createBackground=true) {
+
+            this.hidden = true;
+
+            // Create the content div
+            this.content = document.createElement('div');
+            this.content.style.position = 'fixed';
+            this.content.style.top = '50%';
+            this.content.style.left = '50%';
+            this.content.style.transform = 'translate(-50%, -50%)';
+            // this.content.style.backgroundColor = 'white';
+            this.content.style.zIndex = '10000';
+            this.content.style.borderRadius = '20px';
+            this.content.style.overflow = 'auto';
+            this.content.style.padding = '20px';
+            this.content.style.maxHeight = '80vh';
+            this.content.id = contentID;
+
+            if (createBackground) {
+                // Create the background div
+                this.background = document.createElement('div');
+                this.background.style.position = 'fixed';
+                this.background.style.top = '0';
+                this.background.style.left = '0';
+                this.background.style.width = '100%';
+                this.background.style.height = '100%';
+                this.background.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                this.background.style.zIndex = '9999';
+                this.background.style.display = 'none';
+                
+
+                
+                
+
+                // Add the content div to the background div
+                this.background.appendChild(this.content);
+
+                // Add the background div to the body element
+                document.body.appendChild(this.background);
+
+            }
+            
+        }
+
+        // Method to set the size of the content div
+        setSize(width, height) {
+            this.content.style.width = `${width}px`;
+            this.content.style.height = `${height}px`;
+        }
+
+        setHTML(innerHTML) {
+            this.content.innerHTML = innerHTML;
+        }
+
+        updateItem() {
+            console.log("Modify this method to update the needed information");
+        }
+
+        // Method to show the modal
+        show() {
+            this.hidden = false;
+            this.background.style.display = 'block';
+        }
+
+        // Method to hide the modal
+        hide() {
+            this.hidden = true;
+            this.background.style.display = 'none';
+        }
+    }
+
+    class HelpMenu extends Modal {
+        constructor() {
+            super('Help-Menu')
+
+            this.container = this.content.appendChild(document.createElement('div'));
+            this.container.innerHTML = `
+            <h3>Duplicate File Removal - Help Menu</h3>
+            <div class="indented-line">
+                <h4>
+                    <span style="font-size: 18pt;border-radius: 20px;background: rgba(255,0,0,0.3);font-weight: 800;padding-left: 10px;padding-right: 10px;margin: 2px;">!</span>
+                    Please be aware, This page <u><i>will</i></u> relocate and/or rename files on your system.
+                </h4>
+                
+                <div class="indented-line">
+                    <ul>
+                        <li>Files that have multiple files in the system with the same filename will show up here.</li>
+                        <li>Files marked as "Parent" in <span class="important-item text-shadow-outline" style="color:var(--parent-color)">blue</span> will be kept in the system as is.</li>
+                        <li>Files marked as "Rename" will be marked in <span  class="text-shadow-outline important-item" style="color:var(--rename-color)">yellow</span>, changing the file name to the value of the text input below each file. This will change the name in your system as well.</li>
+                        <li>Files marked with "Remove" will be marked in <span class="text-shadow-outline important-item" style="color:var(--remove-color);">red</span> and will be relocated from the file path to the folder specified in the config using the parameter <span class="parameter-item">pending_removal_duplicates_folder</span>, or within the ImageSorter module folder under 'static/pending_removal_duplicates' and removed from the ImageSorter system to be later dealt with yourself.</li>
+                        <li>Upon removal of the selected file(s) are not deleted, but relocated to a folder within the static folder of your ImageSorter module, or as specified in the config under <span class="parameter-item">pending_removal_duplicates_folder</span> parameter.</li>
+                        <li>Removed files are made as a new file in the system, while the <span style="color:var(--parent-color);">parent</span> keeps any and all tags/sequences/notes/etc, so be sure to pick the right one.</li>
+                    </ul>
+
+                    <h3>How to use</h3>
+                    <div style="margin-left:10px;">
+                        <ul>
+                            <li>By default, each duplicate sets the older file as the parent and marks the newer ones to be renamed.</li>
+                            <li>If you wish to keep one of the files, it must be renamed, so mark it as 'Rename' and set the new filename. By default, a new filename is generated for you that can be changed.</li>
+                            <li>If they are truly duplicates of each other, mark it as 'Remove'. This will remove the file from the database and relocate it to the <span class="parameter-item">pending_removal_duplicates_folder</span> folder as noted above.</li>
+                            <li>Once you have made your decision, press the "Submit" button to submit your choices.</li>
+                            <li>If you wish to batch submit, the 'Submit All' button will go through each item currently on the page and submit it as is.</li>
+                        </ul>
+                    </div>
+
+
+                    <div>Removed files are processed in the following ways:</div>
+                    <ul>
+                        <li>Relocated to the 'pending_removal_duplicates' folder noted in the ImageSorter config.</li>
+                        <li>The file has the current date and time appended to it.</li>
+                        <li>Internally, a note is added to the parent file noting when it was transferred over.</li>
+                        <li>The file's tags are merged with the parent.</li>
+                        <li>The file is removed from the database.</li>
+                    </ul>
+                    <div>Renamed files are processed in the following way:</div>
+                    <ul>
+                        <li>The file's name is changed on a system level.</li>
+                        <li>Then, the file's name is changed in the database.</li>
+                    </ul>
+                </div>
+
+
+
+            </div>
+            `
+            this.background.onclick = () => {
+                if (!this.content.contains(event.target)) {
+                    this.hide();
+                }
+            }
+        }
+    }
+
+
+    function loadFiles() {
+        if (dupeFiles.length > 0) {
+            document.getElementById('no-files-overlay').style.display = 'none';
+            createContainers("Duplicates",dupeFiles);
+        }
+    }
+
+    function generateTagChild(parent,tag='div') {
+        return parent.appendChild(document.createElement(tag));
+    }
+
+    function getImageURL_filename(filename,size) {
+        return `${baseImageURL}${filename}?size=${size}`
+    }
+
+    function getImageURL_duplicate(filename,index,size) {
+        return `${baseDupeImageURL}${filename}/${index}?size=${size}`
+    }
+
+    function load_image_stats_into_div(infoDiv,filename,Type,index) {
+        
+        if (Type == 'Duplicates') {
+            $.ajax({
+                type: "GET",
+                url: "{{url_for(blueprint_name+'.load_duplicate_image_data_base')}}"+filename+'/'+index,
+                success: function(data) {
+
+                    // console.log(index,filename,data);
+                    if (Object.keys(data).includes('SIZE')) {
+                        infoDiv.querySelector('.imageDimensions').size = data['SIZE']
+                        infoDiv.querySelector('.imageDimensions').innerHTML = `${data['SIZE'][0]} x ${data['SIZE'][1]}`
+                    }
+                    if (Object.keys(data).includes('ORIGINAL_DATE')) {
+                        infoDiv.querySelector('.imageOriginalDate').innerHTML = `${data['ORIGINAL_DATE']}`
+                    }
+                    if (Object.keys(data).includes('FULL_PATH')) {
+                        infoDiv.querySelector('.filepath').innerHTML = `${data['FULL_PATH']}`
+                    }
+                    infoDiv.size = data['SIZE']
+                },
+                error:function(err){
+                    // alert(err.responseText);
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+            })
+
+        }
+        
+    }
+
+    function search_parentChild(file_list) {
+        let filename_search_string = 'filename:'+file_list.join('|filename:')
+        let url = "{{url_for(blueprint_name+'.landing_page')}}"+`?SEARCH=${filename_search_string}`
+        window.open(url);
+
+    }
+    
+
+    function createContainers(Type,data) {
+        function createHelperButtons(container) {
+            let buttonContainer = container.appendChild(document.createElement('div'))
+            buttonContainer.classList.add('helper-buttons');
+
+            let parentButton = buttonContainer.appendChild(document.createElement('button'))
+            parentButton.innerText = 'Parent';
+            parentButton.classList.add('parent-button')
+            parentButton.onclick = () => {
+                process_radialMenuSelection(container,'parent_image');
+            }
+
+            let renameButton = buttonContainer.appendChild(document.createElement('button'))
+            renameButton.innerText = 'Rename';
+            renameButton.classList.add('rename-button')
+            renameButton.onclick = () => {
+                process_radialMenuSelection(container,'rename_image');
+            }
+
+            let removeButton = buttonContainer.appendChild(document.createElement('button'))
+            removeButton.innerText = 'Remove';
+            removeButton.classList.add('remove-button')
+            removeButton.onclick = () => {
+                process_radialMenuSelection(container,'delete_image');
+            }
+
+            
+        }
+        
+        // console.log(Type,data)
+        // mainContainer.innerHTML = ''
+
+        let itemStatsContainer = generateTagChild(imageStatsContainer);
+        itemStatsContainer.innerHTML = `<div>Total Duplicates: ${totalDuplicates}</div>`
+
+        let helpMenuContainer = generateTagChild(imageStatsContainer);
+        let helpMenuButton = generateTagChild(helpMenuContainer,'button');
+        helpMenuButton.innerText = 'Help Menu'
+        helpMenuButton.onclick = () => {
+            helpMenu.show();
+        }
+
+        data.forEach((imageDict,mainIndex) => {
+
+            let filename = imageDict.file_name
+            
+            let img_auto_keys = imageDict.img_auto_keys.split(',');
+
+            // console.log(imageDict)
+            let outerContainer = generateTagChild(imagesContainer);
+            outerContainer.classList.add('outerContainer')
+            outerContainer.setAttribute('Index',mainIndex)
+
+                        
+            let parentContainer = generateTagChild(outerContainer);
+            parentContainer.classList.add('parentContainer')
+            
+            let childScrollContainer = generateTagChild(outerContainer);
+            childScrollContainer.classList.add('childScrollContainer')
+
+            //parent Container
+            let parentImageContainer = generateTagChild(parentContainer)
+                parentImageContainer.setAttribute('draggable',true)
+                parentImageContainer.ondragstart = function() {
+                    
+                    ondrag_displayRadial(this,Type)
+                }
+                parentImageContainer.oncontextmenu = function() {
+                    load_image_comparison(this);
+                }
+                parentImageContainer.setAttribute('childIndex',0)
+                parentImageContainer.setAttribute('Index',mainIndex)
+                parentImageContainer.setAttribute('filename',filename)
+                parentImageContainer.setAttribute('img_auto_key',img_auto_keys[0])
+
+                createHelperButtons(parentImageContainer)
+                parentImageContainer.querySelector('.parent-button').classList.add('selected');
+
+            parentImageContainer.classList.add('parentImageContainer')
+            parentImageContainer.classList.add('imageContainer')
+            parentImageContainer.classList.add('parent_image')
+            parentImageContainer.setAttribute('value','parent_image')
+            
+
+
+            
+            let parentImageStatsContainer = generateTagChild(parentImageContainer);
+                parentImageStatsContainer.classList.add('textShadow')
+
+            let parentImageStats_imageDims = generateTagChild(parentImageStatsContainer);
+                parentImageStats_imageDims.classList.add('imageDimensions');
+            let parentImageStats_lastModified = generateTagChild(parentImageStatsContainer);
+                parentImageStats_lastModified.classList.add('imageOriginalDate');
+            let parentImageStats_filepath = generateTagChild(parentImageStatsContainer);
+                parentImageStats_filepath.classList.add('filepath');
+            
+            
+            
+
+            
+
+            let parentImage = parentImageContainer.appendChild(document.createElement('img'))
+            // parentImage.setAttribute('loading','eager')
+             if (Type=='Duplicates') {
+                parentImage.setAttribute('img_url',getImageURL_duplicate(imageDict.file_name,0,'medium'))
+                scrollIntoScreenViewObserver.observe(parentImage)
+                
+                let parentImageStats_filename = parentImageContainer.appendChild(document.createElement('input'));
+                parentImageStats_filename.value = filename;
+                parentImageStats_filename.classList.add('filename_input')
+
+            }
+
+            if (Type == 'Duplicates') {
+                parentImage.onload = () => {
+                    load_image_stats_into_div(parentImageStatsContainer,filename,Type,0);
+                }
+                
+            }
+
+            
+            parentImage.onerror = function() {
+                this.alt = "Invalid or Missing Image";
+                this.style.background = 'red';
+                this.style.padding = '1px';
+            }
+
+            let parentImageButton_Submit = generateTagChild(parentImageContainer,'button')
+            parentImageButton_Submit.innerText = 'Submit';
+            parentImageButton_Submit.classList.add('submit_button');
+            parentImageButton_Submit.onclick = function() {
+                submitSelection(mainIndex);
+            }
+
+            //child Container
+            for (i=0;i<imageDict.file_count-1;i++) {
+                let childImageContainer = generateTagChild(childScrollContainer)
+                    childImageContainer.classList.add('childImageContainer');
+                    childImageContainer.classList.add('imageContainer');
+                    childImageContainer.setAttribute('childIndex',i+1);
+                    childImageContainer.setAttribute('Index',mainIndex);
+                    childImageContainer.setAttribute('filename',filename);
+                    childImageContainer.setAttribute('img_auto_key',img_auto_keys[i+1]);
+                    createHelperButtons(childImageContainer);
+                    childImageContainer.querySelector('.rename-button').classList.add('selected');
+                    
+
+                childImageContainer.setAttribute('draggable',true)
+                childImageContainer.ondragstart = function() {
+                    ondrag_displayRadial(this,Type)
+                }
+                const radialMenu = document.getElementById('radialMenu')
+
+                function ondrag_displayRadial(Element,Type) {
+                    if (event.ctrlKey) {
+                        event.preventDefault();
+                        return;
+                    }
+                    currImageSelected = Element;
+                    event.dataTransfer.effectAllowed = "copyMove";
+                    event.dataTransfer.dropEffect = "copy";
+
+                    var img = new Image();
+                    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs='; //clears the
+                    event.dataTransfer.setDragImage(img, 0, 0);
+
+                    radialMenu.classList.add('VISIBLE')
+                    radialMenu.style.left = `${event.clientX-100}px` //centers radialMenu
+                    radialMenu.style.top = `${event.clientY-100}px`
+
+                    
+                    // if (Type=='Duplicates') {
+                    //     document.getElementById('radialMenu_option1').querySelector('.radialMenu_innerText').innerText = 'Rename'
+                    //     document.getElementById('radialMenu_option1').setAttribute('value','rename_image')
+                    //     document.getElementById('radialMenu_option1').classList.remove('keep_image')
+                    //     document.getElementById('radialMenu_option1').classList.add('rename_image')    
+                    //     //merge_image doesn't work for duplicates. Have to either rename or delete.
+                    //     document.getElementById('radialMenu_option2').querySelector('div').innerText = '[DISABLED]'
+                    //     document.getElementById('radialMenu_option2').setAttribute('value','') 
+                    //     document.getElementById('radialMenu_option2').classList.remove('merge_image')
+                    // }
+
+                    event.preventDefault();        
+                    isRadialMenuActive = true;
+
+                }
+                childImageContainer.oncontextmenu = function() {
+                    load_image_comparison(this);
+                }
+
+                let childImageStatsContainer = generateTagChild(childImageContainer);
+                    childImageStatsContainer.classList.add('textShadow')
+                let childImageStats_imageDims = generateTagChild(childImageStatsContainer);
+                    childImageStats_imageDims.classList.add('imageDimensions');
+                let childImageStats_filepath = generateTagChild(childImageStatsContainer);
+                    childImageStats_filepath.classList.add('filepath');
+                let childImageStats_lastModified = generateTagChild(childImageStatsContainer);
+                    childImageStats_lastModified.classList.add('imageOriginalDate');
+
+                
+                    
+                    
+                
+                let childImage = childImageContainer.appendChild(document.createElement('img'))
+                
+                
+                let childImageStats_sim = generateTagChild(childImageContainer);
+                // childImage.setAttribute('loading','lazy')
+                if (Type=='Duplicates') {
+                    
+
+                    childImageContainer.classList.add('rename_image');
+                    childImageContainer.setAttribute('value','rename_image')
+                    
+                    childImage.setAttribute('img_url',getImageURL_duplicate(imageDict.file_name,i+1,'medium'))
+                    scrollIntoScreenViewObserver.observe(childImage)
+
+
+                    let currI = i+1
+                    childImage.onload = () => {
+                        load_image_stats_into_div(childImageStatsContainer,filename,Type,currI);
+                    }
+                    
+                    
+                    let childImageStats_filename = childImageContainer.appendChild(document.createElement('input'));
+                    childImageStats_filename.classList.add('filename_input')
+                    
+                    
+                    let splitFilename = filename.split('.')
+
+                    filename_no_ext = splitFilename.slice(0,-1)
+                    extension = splitFilename[splitFilename.length-1]
+
+                    let x =  new Date()
+
+
+                    childImageStats_filename.value = filename_no_ext+`_${i}_${Math.floor(Math.random() * 11000)}_.`+extension;
+                }
+
+                childImage.onerror = function() {
+                this.alt = "Invalid or Missing Image";
+                this.style.background = 'red';
+                this.style.padding = '1px';
+            }
+
+            }
+
+            
+            
+
+        })
+        createContainers = function() {}; //Kills the function after running once;
+
+        let finalButton = generateTagChild(mainContainer,'div');
+
+            finalButtonInput = generateTagChild(finalButton,'button')
+            finalButtonInput.innerText = 'Submit All';
+            
+                finalButtonInput.onclick = function() {
+                    if (confirm("Do you wish to submit ALL current items?")) {
+                    Array.from(document.querySelectorAll('.submit_button')).forEach((button) => {
+                        button.click();
+                    })
+                    }
+                
+
+                }
+
+    }
+
+    const compareContainer = document.getElementById('compareContainer');
+
+    function load_image_comparison(image) {
+        if (event.ctrlKey) {
+            return; //allow context menu to show up.
+        }
+        event.preventDefault();
+        let outerContainerSelected = document.querySelector(`.outerContainer[index="${image.getAttribute('index')}"]`)
+        // console.log(outerContainerSelected)
+
+        //get Parent
+        let parent_image = outerContainerSelected.querySelector('.parent_image')
+        if (parent_image == image) {
+            return; //No need to compare with itself
+        }
+        //get selected item
+        let child_image = image;
+
+        compareContainer.classList.add('VISIBLE')
+
+
+        //load parent
+        document.getElementById('mainCompareImg').src = parent_image.querySelector('img').src.split('?')[0]+'?size=full'
+        document.getElementById('secondCompareImg').src = child_image.querySelector('img').src.split('?')[0]+'?size=full'
+        
+    }
+
+    const radialMenu = document.getElementById('radialMenu')
+
+    function ondrag_displayRadial(Element,Type) {
+        if (event.ctrlKey) {
+            event.preventDefault();
+            return;
+        }
+        currImageSelected = Element;
+        event.dataTransfer.effectAllowed = "copyMove";
+        event.dataTransfer.dropEffect = "copy";
+
+        var img = new Image();
+        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs='; //clears the
+        event.dataTransfer.setDragImage(img, 0, 0);
+
+        radialMenu.classList.add('VISIBLE')
+        radialMenu.style.left = `${event.clientX-100}px` //centers radialMenu
+        radialMenu.style.top = `${event.clientY-100}px`
+
+        
+        if (Type=='Duplicates') {
+            document.getElementById('radialMenu_option1').querySelector('.radialMenu_innerText').innerText = 'Rename'
+            document.getElementById('radialMenu_option1').setAttribute('value','rename_image')
+            document.getElementById('radialMenu_option1').classList.remove('keep_image')
+            document.getElementById('radialMenu_option1').classList.add('rename_image')
+
+            
+            //merge_image doesn't work for duplicates. Have to either rename or delete.
+            document.getElementById('radialMenu_option2').querySelector('div').innerText = '[DISABLED]'
+            document.getElementById('radialMenu_option2').setAttribute('value','') 
+            document.getElementById('radialMenu_option2').classList.remove('merge_image')
+        }
+
+        event.preventDefault();        
+        isRadialMenuActive = true;
+
+    }
+
+
+
+    function hoverRadialMenu(Element) {
+        Array.from(document.querySelectorAll('.hover_radialOption')).forEach((hovered) => {
+            hovered.classList.remove('hover_radialOption')
+        })
+        Element.classList.add('hover_radialOption');
+        currRadialOption = Element;
+    }
+
+    
+    
+
+    function process_radialMenuSelection(image,radialOption) {
+        let outerContainerSelected = document.querySelector(`.outerContainer[index="${image.getAttribute('index')}"]`)
+        // console.log(outerContainerSelected)
+        // console.log(radialOption);
+        let selectedOption;
+        if (typeof radialOption === 'string') {
+            selectedOption = radialOption
+        } else {
+            selectedOption = radialOption.getAttribute('value');
+            if (!selectedOption) {
+                return;
+            }    
+        }
+        
+        let available_selections = ['keep_image','rename_image','delete_image','parent_image']
+
+        if (available_selections.indexOf(selectedOption) == -1) {
+            return;
+        }
+
+        // console.log(selectedOption);
+
+        ['keep_image','rename_image','delete_image','parent_image'].forEach((option) => {
+            image.classList.remove(option)
+        })
+
+        if (selectedOption == 'parent_image') {
+            //remove other parent_images, set those to MERGE_IMAGE
+            Array.from(outerContainerSelected.querySelectorAll('.parent_image')).forEach((parent) => {
+                parent.classList.remove('parent_image');
+                parent.querySelector('.parent-button').classList.remove('selected')
+                parent.querySelector('.remove-button').classList.add('selected')
+                if (file_types == 'Duplicates') {
+                    parent.classList.add('delete_image');
+                    parent.setAttribute('value','delete_image');
+                }
+                
+            })
+            
+        }
+        image.classList.add(selectedOption)
+        image.setAttribute('value',selectedOption)
+        
+
+        parent_image_array = Array.from(outerContainerSelected.querySelectorAll('.parent_image'))
+        if (parent_image_array.length == 0) {
+            let firstChild = outerContainerSelected.querySelector('[childIndex="0"]')
+            Array.from(['rename_image','delete_image']).forEach((option) => {
+                firstChild.classList.remove(option)
+            })
+            firstChild.setAttribute('value','parent_image')
+            firstChild.classList.add('parent_image')
+            Array.from(['parent-button','rename-button','remove-button']).forEach((button_name) => {
+                firstChild.querySelector(`.${button_name}`).classList.remove('selected')
+            })
+            firstChild.querySelector(`.parent-button`).classList.add('selected')
+            
+        }
+
+        Array.from(['parent-button','rename-button','remove-button']).forEach((button_name) => {
+            image.querySelector(`.${button_name}`).classList.remove('selected')
+        })
+        
+        if (selectedOption == 'parent_image') {
+            image.querySelector(`.parent-button`).classList.add('selected')
+        }
+        if (!image.classList.contains('parent_image')) {
+            if (selectedOption == 'rename_image') {
+                image.querySelector('.rename-button').classList.add('selected')
+            } else if (selectedOption == 'delete_image') {
+                image.querySelector('.remove-button').classList.add('selected')
+            }
+        } else {
+            image.querySelector(`.parent-button`).classList.add('selected')
+        }
+
+        compareWithParentSize(image);
+        
+
+
+
+        if (selectedOption == 'parent_image') {
+            Array.from(outerContainerSelected.querySelectorAll('[childIndex]')).forEach((child) => {
+                
+                if (image != child) {
+                    compareWithParentSize(child);    
+                }
+            })
+        } 
+        
+    }
+
+    function select_RadialMenuOption() {
+        if (isRadialMenuActive) {
+            process_radialMenuSelection(currImageSelected,currRadialOption);
+            isRadialMenuActive = false;
+            radialMenu.classList.remove('VISIBLE')
+        }
+        
+    }
+
+    function compareWithParentSize(image) {
+
+        
+
+        let outerContainerSelected = document.querySelector(`.outerContainer[index="${image.getAttribute('index')}"]`);
+        let parentImage = outerContainerSelected.querySelector('.parent_image')
+
+        if (image == parentImage) {
+            return;
+        }
+
+        let imageSize = image.querySelector('.imageDimensions').size;
+        let parentSize = parentImage.querySelector('.imageDimensions').size;
+        // console.log('SIZE COMPARISON',imageSize,parentSize)
+        if (imageSize && parentSize) {
+            if ((imageSize[0]+imageSize[1]) > (parentSize[0]+parentSize[1])) {
+                image.querySelector('.imageDimensions').style.background='red'
+            } else {
+                image.querySelector('.imageDimensions').style.background='green'
+            }
+        }
+        
+    }
+
+    function getSimilarInfo(index) {
+        let outerContainerSelected = document.querySelector(`.outerContainer[index="${index}"]`);
+        // console.log(indx,duplicateName)
+        // console.log(outerContainerSelected)
+        let children = outerContainerSelected.querySelectorAll("[childIndex]");
+        // console.log("CHILDREN",children);
+
+        let imageDict = {
+            PARENT:undefined,
+            PARENT_INDEX:-1,
+            MERGE:[],
+            DELETE:[],
+            KEEP:[],
+            RENAME:[],
+            MERGE_IMG_AK:[],
+            DELETE_IMG_AK:[],
+            KEEP_IMG_AK:[],
+            RENAME_IMG_AK:[],
+            TYPE:file_types.toUpperCase(),
+            'csrf_token':csrf_token
+        }
+
+        let parentCount = 0
+        Array.from(children).forEach((child,indx) => {
+            let value = indx; //duplicates
+            let filename = child.getAttribute('filename');
+            let img_auto_key = child.getAttribute('img_auto_key');
+
+
+            let selectedImageValue = child.getAttribute('value');
+            if (selectedImageValue == 'parent_image') {
+                imageDict.PARENT = filename;
+                imageDict.PARENT_INDEX = indx;
+                parentCount+=1;
+            } else if (selectedImageValue == 'keep_image') {
+                imageDict.KEEP.push(value);
+                imageDict.KEEP_IMG_AK.push(img_auto_key);
+            } else if (selectedImageValue == 'delete_image') {
+                imageDict.DELETE.push(value);
+                imageDict.DELETE_IMG_AK.push(img_auto_key);
+            } else if (selectedImageValue == 'rename_image') {
+                // console.log("HI",child.querySelector('.filename_input'))
+                imageDict.RENAME.push(indx.toString()+'|!|'+child.querySelector('.filename_input').value);
+                imageDict.RENAME_IMG_AK.push(img_auto_key);
+            }
+        })
+
+        imageDict.MERGE = imageDict.MERGE.join("|*|")
+        imageDict.MERGE_IMG_AK = imageDict.MERGE_IMG_AK.join(",")
+        imageDict.KEEP = imageDict.KEEP.join("|*|")
+        imageDict.KEEP_IMG_AK = imageDict.KEEP_IMG_AK.join(",")
+        imageDict.DELETE = imageDict.DELETE.join("|*|")
+        imageDict.DELETE_IMG_AK = imageDict.DELETE_IMG_AK.join(",")
+        imageDict.RENAME = imageDict.RENAME.join("|*|")
+        imageDict.RENAME_IMG_AK = imageDict.RENAME_IMG_AK.join(",")
+        if (parentCount > 1 || parentCount < 1) {
+            // console.log('Parent Count:',parentCount)
+            alert("Only one parent image may be selected.")
+            throw "Only one parent image may be selected."    
+            
+        } else {
+            return imageDict;
+        }
+
+    }
+
+    function submitSelection(index) {
+        let info = getSimilarInfo(index)
+        let currDiv = document.querySelector(`.outerContainer[index="${index}"]`)
+        Array.from(currDiv.querySelectorAll('button')).forEach((button) => {
+            button.setAttribute('disabled','true')
+        })
+        currDiv.style.filter = 'grayscale(1.0)'
+        currDiv.style.pointerEvents = 'none';
+        info.csrf_token = csrf_token
+        $.ajax({
+                type: "POST",
+                url: "{{url_for(blueprint_name+'.duplicates_process')}}",
+                data:info,
+                success: function(data) {
+                    // console.log("Completed Submission")
+                    let currDiv = document.querySelector(`.outerContainer[index="${index}"]`)
+                    currDiv.remove();
+                    
+                    //check if the parent file is the child of any of the others
+                    let parentObject_filename = currDiv.querySelector('.parentImageContainer').getAttribute('filename');
+                    parentObject_filename_children = document.querySelectorAll(`.childImageContainer[filename="${parentObject_filename}"][index]`)
+
+                    // console.log("POFC:",parentObject_filename_children);
+
+                    Array.from([info.KEEP.split("|*|"),info.DELETE.split("|*|"),info.MERGE.split("|*|"),[info.PARENT],info.RENAME.split("|*|")],).forEach((fileList) => {
+                        if (fileList[0] != '') {
+                            // console.log("FileList:",fileList)
+                            Array.from(fileList).forEach((filename) => {
+                                // console.log("FILENAME:",filename);
+                                if (parentObject_filename != filename) {
+                                    Array.from(parentObject_filename_children).forEach((file_child) => {
+                                        try{
+                                            let theParentNode = file_child.parentNode.parentNode;
+                                            // console.log('FILENAME CHECK:',file_child.parentNode.parentNode.querySelector('.parentImageContainer').getAttribute('filename'),filename)
+                                            if (filename == file_child.parentNode.parentNode.querySelector('.parentImageContainer').getAttribute('filename')) {
+                                                file_child.remove();
+                                            }
+                                        }
+                                        catch{};
+
+                                        
+                                        
+                                    })
+                                    
+
+                                }
+                            })
+
+                        }
+                        
+                    })
+
+                    Array.from([info.DELETE.split("|*|"),info.MERGE.split('|*|'),info.RENAME.split('|*|')]).forEach((removedItem) => {
+                        Array.from(removedItem).forEach((removeItemFilename) => {
+                            removedItemDivs = document.querySelectorAll(`.imageContainer[filename="${removeItemFilename}"]`);
+                            Array.from(removedItemDivs).forEach((removedItemDiv) => {
+                                removedItemDiv.remove();
+                            })
+                        })
+                        
+                    })
+
+                    Array.from(document.querySelectorAll('.outerContainer')).forEach((outerContainer) => {
+                        if (outerContainer.querySelectorAll('.parentImageContainer').length == 0 || outerContainer.querySelectorAll('.childImageContainer').length == 0 ) {
+                            outerContainer.remove();
+                        }
+                    })
+
+
+                    // let parentObject = document.querySelector('.parentImageContainer[filename=""][index]')
+                    // let childObject = document.querySelector('.childImageContainer[filename=""][index]');
+
+
+                },
+                error:function(err){
+                    alert(err.responseText);
+                },
+                fail: function() {
+                    alert('Database Access Denied');
+                }
+            })
+    }
+
+
+
+    document.getElementById('compareContainer').onclick = function() {
+        document.getElementById('childCompare').classList.toggle('fitscreen')
+        document.getElementById('mainCompare').classList.toggle('fitscreen')   
+    }
+
+    document.addEventListener('keyup',function() {
+        // console.log(event);
+        if (document.getElementById('compareContainer').classList.contains('VISIBLE')) {
+            if (event.key == '1') {
+                document.getElementById('secondCompareImg').style.display = 'none'
+                document.getElementById('mainCompareImg').style.display = ''
+            } else if (event.key == '2') {
+                document.getElementById('secondCompareImg').style.display = ''
+                document.getElementById('mainCompareImg').style.display = 'none'
+            } else if (event.key == 'Escape') {
+                if (document.getElementById('compareContainer').classList.contains('VISIBLE')) {
+                    document.getElementById('compareContainer').classList.remove('VISIBLE')
+                }
+                
+            } else if (event.key == 'f') {
+                document.getElementById('compareContainer').classList.toggle('fullsize')
+                document.getElementById('secondCompareImg').classList.toggle('fullsize')
+                document.getElementById('mainCompareImg').classList.toggle('fullsize')
+            }
+
+        }
+    })
+
+    function loadImageList() {
+            if (imagesToLoad.length > 0 && imagesLoading == false) {
+                
+                if (imagesToLoad.length < 10) {
+                    loadDelay = 50
+                } else if (imagesToLoad.length < 20) {
+                    loadDelay = 20;
+                } else if (imagesToLoad.length >=20) {
+                    loadDelay = 10;
+                }
+                
+                // imagesLoading = true
+                imagesToLoad[0].onerror = () => {
+                    imagesLoading = false
+                }
+                imagesToLoad[0].src = imagesToLoad[0].getAttribute('img_url')
+                // entry.target.src = entry.target.getAttribute('img_url')
+                imagesToLoad.shift()
+                
+                
+            } else if (imagesToLoad.length == 0) {
+                loadDelay = 500;
+            }
+            setTimeout(function(){loadImageList()},loadDelay)
+            // console.timeEnd('loadImageListTimer')
+        }
+
+    function scrollIntoScreenViewOnIntersection(entries,opts) {
+        entries.forEach(entry => {
+            var visible = entry.intersectionRatio >= opts.thresholds[0]
+            if (visible) {
+                if (!entry.target.classList.contains('ON_SCREEN')) {
+                    imagesToLoad.push(entry.target)
+                    // 
+                    entry.target.classList.add('ON_SCREEN')
+                    scrollIntoScreenViewObserver.unobserve(entry.target)
+                } else {
+                    
+                    
+                }
+            }
+        })
+    }
+
+    const scrollIntoScreenViewObserver = new IntersectionObserver(scrollIntoScreenViewOnIntersection, {
+        // root: root,   // default is the viewport
+        threshold: 0.1, // percentage of the target visible area which will trigger "onIntersection"
+        rootMargin:'1000px 0px 1000px 0px'
+    })
+
+    
+
+
+
+    
+    loadFiles();
+    loadImageList();
+    let helpMenu = new HelpMenu();
+    
+
+</script>
+
+<style>
+
+    {%include "styles_jinja/theme_css.html"%}
+
+    :root {
+        --parent-color:SteelBlue;
+        --rename-color:goldenrod;
+        --remove-color:firebrick;
+    }
+
+    body {
+        background:var(--bg-color);
+        color:var(--text-color);
+        margin:0;
+        overflow:hidden;
+    }
+
+    #compareContainer {
+        display:none;
+        width:100vw;
+        height:100vh;
+        overflow:auto;
+    }
+    
+
+    #compareContainer.VISIBLE {
+        display:block;
+    }
+    
+    #mainCompare.fitscreen > img,#childCompare.fitscreen > img {
+        width:100%;
+        height:100%;
+        object-fit: contain;
+    }
+
+    #mainContainer {
+        width:100vw;
+        height:100vh;
+        overflow-y:hidden;
+        overflow-x:hidden;
+        display:grid;
+        grid-template-areas: 'a' 'b';
+    }    
+
+    .outerContainer {
+        display:grid;
+        grid-template-columns: 400px 1fr;
+        /* height:400px; */
+        width:100%;
+        min-height:600px;
+    }
+    .parentContainer {
+        height:100%;
+        width:100%;
+        background:silver;
+        border:1px solid pink;
+    }
+
+    .childScrollContainer {
+        height:100%;
+        width:100%;
+        background:beige;
+        border:1px solid greenyellow;
+        /* overflow-x:auto;
+        overflow-y:hidden; */
+        /* display:flex; */
+        overflow-x: scroll;
+        overflow-y: hidden;
+        white-space: nowrap;
+
+    }
+
+    .childScrollContainer > .imageContainer {
+        display:inline-block;
+    }
+
+    .textShadow {
+        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        color:white;
+    }
+
+    .text-shadow-outline {
+        text-shadow:
+		-1px -1px 0 black,
+		1px -1px 0 black,
+		-1px 1px 0 black,
+		1px 1px 0 black;
+    }
+    .text-shadow-outline.white {
+        text-shadow:
+		-1px -1px 0 white,
+		1px -1px 0 white,
+		-1px 1px 0 white,
+		1px 1px 0 white;
+    }
+
+    img {
+        background:black; /*Remove transparency from some images*/
+        min-height:100px;
+        min-width:100px;
+        
+        object-fit:contain;
+    }
+
+    .imageContainer {
+        padding:5px;
+        max-width:400px;
+        min-height:300px;
+        height:100%;
+        overflow:hidden;
+        /* height: 100%; */
+        /* width:100%; */
+        /* overflow-x:hidden; */
+    }
+
+    .imageContainer > img {
+        max-height:400px;
+        max-width:400px;
+        min-width:400px;
+        max-height:400px;
+    }
+
+    .keep_image {
+        background:rgb(54, 145, 54);
+    }
+    .parent_image {
+        background:var(--parent-color);
+    }
+
+    .delete_image {
+        background:var(--remove-color)
+    }
+
+    .rename_image {
+        background:var(--rename-color);
+    }
+    
+
+    #radialMenu {
+        position: absolute;
+        display:none;
+        cursor:pointer;
+        user-select:none;
+        rotate: 45deg;
+        /* background: black; */
+        grid-template-areas:'a a' 'a a';
+        width:fit-content;
+        /* margin-left:50px;
+        margin-top:50px; */
+        border-radius:50px;
+        overflow:hidden;
+        
+    }
+    #radialMenu.VISIBLE {
+        display:grid;
+    }
+
+    #radialMenu > div {
+        width:100px;
+        height:100px;
+        color:white;
+        position:relative;
+    }
+    .radialMenu_innerText {
+        rotate: -45deg;
+        text-align: center;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        translate: -50% -50%;
+        
+    }
+
+    .hover_radialOption {
+        filter:grayscale(.5)
+    }
+
+    .filename_input {
+        width:98%;
+    }
+
+
+    #compareContainer {
+        display:none;
+        width:100vw;
+        height:100vh;
+        overflow:auto;
+    }
+    
+
+    #compareContainer.VISIBLE {
+        display:block;
+    }
+    
+    #mainCompare.fitscreen > img,#childCompare.fitscreen > img {
+        width:100%;
+        height:100%;
+        object-fit: contain;
+    }
+
+
+    .submit_button,.search_children_button {
+        min-width:300px;
+        margin:auto;
+        left: 50%;
+        margin-top:5px;
+        position: relative;
+        transform: translate(-50%);
+
+    }
+
+    .fullsize {
+        height:100vh !important;
+    }
+
+    #imageStatsContainer {
+        height:fit-content;
+        display:flex;
+        gap:10px;
+    }
+    #imagesContainer {
+        height:100%;
+        width:100%;
+        overflow-y:auto;
+        overflow-x:hidden;
+    }
+
+    #no-files-overlay {
+        width:100vw;
+        height:100vh;
+        position:absolute;
+    }
+
+    #no-files-overlay > div {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        font-size:32pt;
+    }
+
+    #Help-Menu {
+        padding:10px;
+        background:var(--bg-color);
+        color:var(--text-color);
+    }
+    #Help-Menu div.indented-line {
+        margin-top:10px;
+        margin-bottom:20px;
+    }
+
+    #Help-Menu .indented-line {
+        margin-left:20px;
+    }
+
+    #Help-Menu p {
+        margin:0;
+    }
+
+    button.selected {
+        background:rgba(150,150,150,1)
+    }
+
+    #Help-Menu .parameter-item {
+        color:#9bd389;
+        font-size:12pt;
+    }
+
+    .important-item {
+        background:rgba(255, 255, 255, 0.5);
+        padding-left:4px;
+        padding-right:4px;
+        padding-top:1px;
+        padding-bottom:1px;
+        border-radius:20px;   
+        font-weight:800;
+    }
+
+</style>
