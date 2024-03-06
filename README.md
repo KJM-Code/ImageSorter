@@ -61,11 +61,11 @@ The following requirements need to be fulfilled before running this module:
 * Schema 'imagesorter' will be created automatically. See [ImageSorter Instances](#config---separate-imagesorter-instances) if this is a separate instance.
 
 
-If using [HomeWeb](https://github.com/KJM-Code/Homeweb), use the provided `setup.py` file in your Homeweb/ folder. It will register the module, create the schema, and bind the database, etc
+If using [HomeWeb](https://github.com/KJM-Code/Homeweb), use the provided `setup.py` file in your 'Homeweb/' folder. It will register the module, create the schema, and bind the database, etc
 
 If using your own flask server, put the module in the folder of your choice and import the blueprint list object, 'blueprints', from the 'base_settings.py' file and register all of them to your application. At this time this will include the Main blueprint, and the API blueprint. The API blueprint is still incomplete, but you're free to use it for the time being by enabling it in the config.
 
-By default the schema and database_binding are the same: 'imagesorter'. If changing the 'append_schema' config down below, it will be 'imagesorter_{append_schema}', with '{append_schema}' being the value you put in the parameter.
+By default the schema and database_binding are the same: 'imagesorter'. If changing the ['append_schema'](#config---separate-imagesorter-instances) config down below, it will be 'imagesorter_{append_schema}', with '{append_schema}' being the value you put in the parameter.
 
 Example for registering the blueprints:
 ```python
@@ -83,7 +83,7 @@ Please use the provided 'update.bat' file located within the main folder. Be sur
 ## Running the module
 To run the module, initiate the server that the ImageSorter module is being hosted on. It is recommended to run the server in HTTPS mode, but is not necessary to use. Without HTTPS, some features such as copying filenames will not work.
 
--If using the (LINK HERE) HomeWeb application, please go to [HomeWeb](https://github.com/KJM-Code/Homeweb#Usage) to learn how to run it.
+-If using the HomeWeb application, please go to [HomeWeb](https://github.com/KJM-Code/Homeweb#Usage) to learn how to run it.
 
 ## Config File
 After running the ImageSorter module for the first time it will generate a config.yaml file. Here is a list of the parameters and default values, feel free to adjust them.
@@ -102,19 +102,19 @@ After running the ImageSorter module for the first time it will generate a confi
 * by default these folders are in the /static/imagesorter/ folder, but you can set a location on your system to have it save files elsewhere. Must be the full path.
 * example: C:/Sample_Folder/Like_This/
 
-| Parameter | Default | Description | Type |
-|-----|---|-------|-----|
-| pending_removal_folder | static/imagesorter/pending_removal/ | Folder for removed files to go in. | Path - String |
-| pending_removal_dupes_folder | static/imagesorter/pending_removal_dupes | Folder for removed duplicate (by name) files to go in. | Path - String
-| thumbnails_folder | static/imagesorter/thumbnails | Folder for generated thumbnails to go in. | Path - String |
-| user_data_folder | static/imagesorter/user_info | Folder for user information to go in, such as saved custom searches | Path - String |
+| Parameter                    | Default                                  | Description                                                         | Type          |
+|------------------------------|------------------------------------------|---------------------------------------------------------------------|---------------|
+| pending_removal_folder       | static/imagesorter/pending_removal/      | Folder for removed files to go in.                                  | Path - String |
+| pending_removal_dupes_folder | static/imagesorter/pending_removal_dupes | Folder for removed duplicate (by name) files to go in.              | Path - String |
+| thumbnails_folder            | static/imagesorter/thumbnails            | Folder for generated thumbnails to go in.                           | Path - String |
+| user_data_folder             | static/imagesorter/user_info             | Folder for user information to go in, such as saved custom searches | Path - String |
 
 ### Config - Separate ImageSorter instances
 * If you wish to add a new instance of imagesorter, you'll need a new copy of the 'imagesorter' module and then update both of the following parameters:
 
-| Parameter | Default | Description                                                                                                                   | Type |
-|-----|---|-------------------------------------------------------------------------------------------------------------------------------|-----|
-| append_schema | | Appends the alternate schema onto 'imagesorter'. IE: 'landscape' would be 'imagesorter_landscape'.                            | String |
-| append_route  | | Appends the alternate route onto 'imagesorter'. IE: 'landscape' would be '/imagesorter_landscape/' instead of '/imagesorter/'. | String |
+| Parameter     | Default | Description                                                                                                                    | Type   |
+|---------------|---------|--------------------------------------------------------------------------------------------------------------------------------|--------|
+| append_schema |         | Appends the alternate schema onto 'imagesorter'. IE: 'landscape' would be 'imagesorter_landscape'.                             | String |
+| append_route  |         | Appends the alternate route onto 'imagesorter'. IE: 'landscape' would be '/imagesorter_landscape/' instead of '/imagesorter/'. | String |
 
-> :warning: All ImageSorter instances have common 'templates' and 'static' folders. The above specified folders are expected to remain separate; however, for the other folders and files within the static/templates directories, any modifications to the other files will need to be copied to all ImageSorter module instances to prevent issues.
+> :warning: All ImageSorter instances have common 'templates' and 'static' folders. The above specified [folders](#config---folder-path-parameters) are expected to remain separate; however, for the other folders and files within the static/templates directories, any modifications to the other files will need to be copied to all ImageSorter module instances to prevent issues.
