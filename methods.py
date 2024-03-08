@@ -693,7 +693,7 @@ def search_files(SEARCH='',LIMIT=200,PAGE=0,**kwargs):
                                         try:
                                             random_seed = int(searchItem.split(':')[1])
                                         except:
-                                            random_seed = hash(str(searchItem.split(':')[1])) % 2147483647
+                                            random_seed = int(''.join(([str(ord(x)) for x in str(searchItem.split(':')[1])]))) % 2147483647
                                     random = True
                                     pass
                             elif filterCommand in ['imfi_ak','date','year',
