@@ -1918,7 +1918,6 @@ def move_files_to_folder(**kwargs):
                             for tag_ak in imdir_to_update[imdir_ak]:
                                 valueChange = imdir_to_update[imdir_ak][tag_ak]
                                 if valueChange > 0:
-                                    imagesorter_db.tag_directory_crossover_update(tag_ak, imdir_ak, valueChange)
                                     imdir_to_update[imdir_ak][tag_ak] = 0
 
 
@@ -1934,10 +1933,6 @@ def move_files_to_folder(**kwargs):
     updateLoadingStatus('moving_files', pbar)
 
     pbar.close()
-    for imdir_ak in imdir_to_update:
-        for tag_ak in imdir_to_update[imdir_ak]:
-            valueChange = imdir_to_update[imdir_ak][tag_ak]
-            imagesorter_db.tag_directory_crossover_update(tag_ak, imdir_ak, valueChange)
 
     if filesTransferred > 0:
         db.session.commit()
@@ -2306,10 +2301,6 @@ def remove_image_by_imfi_ak(imfi_auto_key):
                              ).remove_file_from_db(IMFI.file_name, IMFI.path)
 
     filename = IMFI.file_name
-
-    for tag in imagesorter_db.TAGGED_IMAGES.query.filter_by(imfi_auto_key=IMFI.imfi_auto_key).all():
-        imagesorter_db.tag_directory_crossover_update(tag_auto_key=tag.tag_auto_key, imdir_auto_key=IMFI.imdir_auto_key,
-                                                      increment=-1)
 
     dict_info = {}
     # _remove_record_from_database(imagesorter_db.SIMILAR_IMAGES.query.filter_by(imfi_auto_key=imfi_auto_key), dict_info,
