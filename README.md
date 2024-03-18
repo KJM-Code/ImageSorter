@@ -1,5 +1,7 @@
 # ImageSorter
 
+<a href="https://ko-fi.com/D1D4V03ZY"><img style="margin-bottom:10px;" src="https://ko-fi.com/img/githubbutton_sm.svg"></a>
+
 A Flask blueprint module for tagging and filtering Image and Video files.
 
 > :warning: **This base module can modify your system by user-input with relocating and renaming files linked to the module. Extensions may or may not change this. Please be aware of this when using it.**
