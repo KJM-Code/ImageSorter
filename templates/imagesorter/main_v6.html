@@ -7133,7 +7133,6 @@ class MovableModal {
             })
 
             // console.log(customTagSearch);
-
             if (currentInputs.keyWord != this.currently_loaded_objects[keyType].keyWord) {
 
                 if (this.currently_loaded_objects[keyType].keyWordShortcut !== undefined &&
@@ -7144,7 +7143,6 @@ class MovableModal {
                 }
                 delete customTagSearch[keyType][this.currently_loaded_objects[keyType].keyWord];
                 this.currently_loaded_objects[keyType].keyWord = currentInputs.keyWord
-
             }
 
             this.saveTagShortcuts();
@@ -7199,9 +7197,11 @@ class MovableModal {
             }
 
             let allowOverwrite = false;
+            let previousKey;
             if (this.keyWordShortcuts[keyType][indexSelected] != undefined) {
                 if (confirm(`Do you wish to overwrite the previous keyword: "${this.keyWordShortcuts[keyType][indexSelected]}"?`)) {
                     allowOverwrite = true;
+                    previousKey = this.keyWordShortcuts[keyType][indexSelected];
                 }
             } else {
                 allowOverwrite = true;
@@ -7213,12 +7213,17 @@ class MovableModal {
                 if (this.currently_loaded_objects[keyType].keyWordShortcut != indexSelected && this.currently_loaded_objects[keyType].keyWordShortcut != undefined) {
                     let previousIndex = parseInt(this.currently_loaded_objects[keyType].keyWordShortcut);
                     this.keyWordShortcuts[keyType][previousIndex] = undefined;
+
                     this.containers[keyType].keywordShortcut.children[previousIndex].innerText = `${previousIndex}`
                 }
                 this.currently_loaded_objects[keyType].keyWordShortcut = indexSelected;
 
                 this.currently_loaded_objects[keyType]
                 customTagSearch[keyType][this.currently_loaded_objects[keyType].keyWord].keyWordShortcut = indexSelected;
+                if (previousKey != undefined) {
+                    delete customTagSearch[keyType][previousKey].keyWordShortcut;
+                }
+                
 
                 this.keyWordShortcuts[keyType][indexSelected] = this.currently_loaded_objects[keyType].keyWord;
                 this.containers[keyType].keywordShortcut.children[indexSelected].innerText = `${indexSelected} - ${this.currently_loaded_objects[keyType].name}`
