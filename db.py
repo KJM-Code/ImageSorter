@@ -105,22 +105,6 @@ class TAGGED_IMAGES(UserMixin, db.Model):
     imfi_auto_key = db.Column(db.Integer, nullable=False)
     tag_auto_key = db.Column(db.Integer, unique=False, nullable=False)
     timestamp = db.Column(db.DateTime, unique=False, nullable=False)
-    # suggested_tag = db.Column(db.Boolean, unique=False, nullable=True)
-    # imtagsu_auto_key = db.Column(db.Integer, unique=False, nullable=True)
-
-
-# class TAGGED_IMAGES_SUGGESTED(UserMixin, db.Model):
-#     __bind_key__ = Schema
-#     __table_args__ = {'sqlite_autoincrement': True,
-#                       "schema": Schema}
-#     imtagsu_auto_key = db.Column(db.Integer, primary_key=True)
-#     imfi_auto_key = db.Column(db.Integer, nullable=False)
-#     tag_auto_key = db.Column(db.Integer, unique=False, nullable=False)
-#     timestamp = db.Column(db.DateTime, unique=False, nullable=False)
-#     suggested_tag_confidence = db.Column(db.Float, unique=False, nullable=True)
-#     suggested_tag_accepted = db.Column(db.Boolean, unique=False, nullable=True)
-#     model_name = db.Column(db.String, unique=False, nullable=True)
-
 
 
 
@@ -152,7 +136,7 @@ class TAG_DIRECTORY_CROSSOVER(UserMixin, db.Model):
 
 
 
-class SEQUENCE(UserMixin, db.Model):  # Multiple sequences? Folders? ... .... nah?
+class SEQUENCE(UserMixin, db.Model):
     __bind_key__ = Schema
     __table_args__ = {'sqlite_autoincrement': True,
                       "schema": Schema}
@@ -173,7 +157,6 @@ class TAGGED_IMAGES_PRECALC(UserMixin, db.Model):
     tags = db.Column(db.Text, nullable=True)
     tag_auto_keys = db.Column(db.String, nullable=True)
     tag_count = db.Column(db.Integer, nullable=False)
-    # suggested_tags = db.Column(db.String, nullable=True)
 
 
 from sqlalchemy import text as sql_text
