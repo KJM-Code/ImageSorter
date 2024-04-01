@@ -716,9 +716,9 @@ class UpdateStatusModal {
         this.currentFolder.innerText = `Current Folder: ${updateValues.custom_data.current_folder}`
 
         if (this.custom_info.length > 0) {
-            document.title = `IS - File Loader - ${this.custom_info}- ${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`;
+            document.title = `ImageSorter - File Loader - ${this.custom_info}- ${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`;
         } else {
-            document.title = `IS - File Loader - ${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`;
+            document.title = `ImageSorter - File Loader - ${(updateValues.progress_data.percentage_complete*100).toFixed(2)}%`;
         }
 
         if (updateValues.custom_data.processing == false) {
