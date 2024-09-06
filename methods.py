@@ -1877,8 +1877,15 @@ def move_files_to_folder(**kwargs):
                     # move image to new folder
                     try:
                         shutil.move(record['path'], new_path)
-                    except:
-                        pass
+                    except FileNotFoundError as e:
+                        # Handle the file not found error
+                        print(f"File {record['file_name']} was not moved because it does not exist.")
+                    except PermissionError as e:
+                        # Handle permission denied errors
+                        print(f"Permission denied while moving file {record['file_name']}.")
+                    except Exception as e:
+                        # Catch any other unexpected exceptions
+                        print(f"An error occurred while moving file {record['file_name']} ({e}).")
 
                     # Now add it to the new localDB
                     new_localImageDirectoryDB.add_file_to_db(record['file_name'],
