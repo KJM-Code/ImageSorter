@@ -410,6 +410,12 @@ def remove_thumbnails(imfi_record, thumbnail_sizes):
 
 @process_method('search_files')
 def search_files(SEARCH='',LIMIT=200,PAGE=0,**kwargs):
+
+    if isinstance(LIMIT,str):
+        LIMIT = int(LIMIT)
+    if isinstance(PAGE,str):
+        PAGE = int(PAGE)
+
     #Redo of search_files, but converting it to allow bracket searches within the base search rather than a separate bracket search.
     where_clauses = ''
     random = False
@@ -2791,6 +2797,19 @@ def edit_tags(process_type,**kwargs):
 
 
 def load_image_file(filename,**kwargs):
+    """
+
+    :param filename:
+    :param kwargs:
+        : SIZE - [small,medium,large,full,custom]
+        : play - if a animation, plays (sends the full gif).
+        : size_data - returns size data about the image.
+        : frame - select frame to view from .gif/animation.
+        : file_data - returns file data about the image.
+    :return:
+    """
+
+
     file = imagesorter_db.IMAGES.query.filter_by(file_name=filename).all()
     if file:
         index = kwargs.get('index', 0)
@@ -2877,7 +2896,6 @@ def get_image_file_data(file_record):
             'NOTES': load_image_notes(imfi_auto_key=get_imfi_auto_key(file_record.file_name))}
 
 
-
 def update_image_notes(note_json_list):
     try:
         for note in note_json_list:
@@ -2937,6 +2955,13 @@ def update_tag_notes(**kwargs):
     return True
 
 def update_tag_data(**kwargs):
+    """
+    : ORIGINAL_TAG
+    : TAG_AUTO_KEY
+    : NEW_TAG
+    :param kwargs:
+    :return:
+    """
     allowCommit = False
     original_tag = kwargs.get('ORIGINAL_TAG', None)
     new_tag = kwargs.get('NEW_TAG', None)
@@ -3003,13 +3028,22 @@ def update_tag_data(**kwargs):
     return True
 
 def remove_tag(**kwargs):
+    """
+    : TYPE - [CLEAR_TAG_FROM_IMAGES, REMOVE_TAG]
+    : TAG_AUTO_KEY
+    : CATEGORY
+    : DETAIL
+    : CONFIRM_DELETE
+    :param kwargs:
+    :return:
+    """
     if kwargs.get('TYPE', None) in ['CLEAR_TAG_FROM_IMAGES', 'REMOVE_TAG']:
         if (tag_auto_key := kwargs.get("TAG_AUTO_KEY", None)) is None:
             return errorhandler.make_error(400, "TAG_AUTO_KEY is required.")
         if (tag_category := kwargs.get('CATEGORY', None)) is None:
-            return errorhandler.make_error(400, "TAG_AUTO_KEY is required.")
+            return errorhandler.make_error(400, "CATEGORY is required.")
         if (tag_detail := kwargs.get('DETAIL', None)) is None:
-            return errorhandler.make_error(400, "TAG_AUTO_KEY is required.")
+            return errorhandler.make_error(400, "DETAIL is required.")
         if (confirm_delete := kwargs.get('CONFIRM_DELETE', None)) is None:
             return errorhandler.make_error(400, "CONFIRM_DELETE is required. (T/F)")
         if confirm_delete.upper() == 'T':
@@ -3050,6 +3084,12 @@ def remove_tag(**kwargs):
     return False
 
 def load_tag_information(**kwargs):
+    """
+    : CATEGORY (optional)
+    :
+    :param kwargs:
+    :return:
+    """
     Dict = {}
     CATEGORY_WHERE = ''
     if 'CATEGORY' in kwargs:
