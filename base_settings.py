@@ -36,7 +36,7 @@ else:
 
 Main = Blueprint(f'ImageSorter{append_schema}', __name__, url_prefix=f"/imagesorter{append_route}", template_folder=f'templates/imagesorter',
                      static_folder=f'static/imagesorter')
-API = Blueprint(f'ImageSorter{append_schema}_API',__name__, url_prefix=f'/imagesorter{append_route}-api',template_folder=f'templates/imagesorter/api',static_folder=f'static/imagesorter')
+API = Blueprint(f'ImageSorter{append_schema}_API',__name__, url_prefix=f'/imagesorter{append_route}/api',template_folder=f'templates/imagesorter/api',static_folder=f'static/imagesorter')
 database_binding = f'imagesorter{append_schema}'
 
 
