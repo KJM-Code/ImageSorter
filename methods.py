@@ -59,7 +59,7 @@ def process_method(argument):
     return decorator
 
 def only_on_server_system():
-    "Only allows the method to run if on the same system as the server."
+    """Only allows the method to run if on the same system as the server."""
     def decorator(method_function):
         @wraps(method_function)
         def wrapper(*args, **kwargs):
@@ -2389,7 +2389,7 @@ def refresh_folder_sql_db(dir_ak, path, bypassFileCheck=False):
     local_imdir_db = local_image_directory_db(
         imagesorter_db.IMAGE_DIRS.query.filter_by(imdir_auto_key=dir_ak, path=path).first())
 
-    if bypassFileCheck:
+    if bypassFileCheck: #Tries to load the files regardless if its already in or not.
         local_imdir_db.bypassFileCheck = True
 
     return local_imdir_db.load_files()
@@ -2845,7 +2845,15 @@ def load_image_file(filename,**kwargs):
         if 'size_data' in kwargs:
             IMG = Image.open(file.path)
             return jsonify(IMG.size)
+
+        if 'size' not in kwargs:
+            kwargs['size'] = 'small'
+
         if 'size' in kwargs:
+
+            if kwargs['size'] not in ['small','medium','large','full','custom']:
+                kwargs['size'] = 'small'
+
             if os.path.isfile(file.path) is False:
                 return errorhandler.make_error(400,"File not found")
             if '.gif' in file.path.lower()[-4::] and 'play' in kwargs:
@@ -3090,6 +3098,19 @@ def load_tag_information(**kwargs):
     :param kwargs:
     :return:
     """
+
+    """
+    :return: - Returns information about all the available tags.
+        Includes:
+            Each category
+            The count for how many times this category has been used total
+            Each detail within a category
+            How many times a tag has been used
+            LAST_USED date
+            The TAG_AUTO_KEY
+            and the TIMESTAMP for when the tag was created
+    """
+
     Dict = {}
     CATEGORY_WHERE = ''
     if 'CATEGORY' in kwargs:
